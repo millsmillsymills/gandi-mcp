@@ -123,6 +123,12 @@ class BaseGandiClient:
             raise GandiTimeoutError(str(exc)) from exc
         except httpx.ConnectError as exc:
             raise GandiConnectionError(str(exc)) from exc
+        except httpx.HTTPError as exc:
+            # Catches WriteError, ReadError, RemoteProtocolError, PoolTimeout,
+            # NetworkError, etc. — anything below httpx.HTTPError that isn't
+            # timeout or connect. Without this, tools surface "Unexpected
+            # error" for routine transport failures.
+            raise GandiConnectionError(str(exc)) from exc
 
         self._raise_for_status(response)
         return response
