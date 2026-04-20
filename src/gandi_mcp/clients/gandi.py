@@ -68,10 +68,8 @@ class GandiClient(BaseGandiClient):
     async def get_price_catalog(self, product_type: str, **params: Any) -> dict[str, Any]:
         """Pricing catalog for a product type (domain, certificate, mailbox, etc.).
 
-        The caller is responsible for passing a valid ``product_type`` —
-        acceptable values include ``domain``, ``domain_option``, ``certificate``,
-        ``mailbox``, ``cloud``, ``simplehosting``, ``openstack``, ``tmch``,
-        ``phoneadvisory``.
+        The caller is responsible for passing a valid ``product_type`` — see
+        the Gandi API docs for the current list.
         """
         result: dict[str, Any] = await self.get(
             f"/v5/billing/price/{product_type}",

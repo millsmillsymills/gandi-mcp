@@ -47,12 +47,12 @@ src/gandi_mcp/
 │   └── gandi.py         # Typed method-per-endpoint wrapper over the v5 REST API
 └── tools/
     ├── _common.py       # get_server_context, get_client, assert_readwrite, assert_purchases_allowed
-    ├── organization.py  # 5 read tools
-    ├── billing.py       # 3 read tools
-    ├── domain.py        # 12 read + 11 write (+ 3 purchase) tools
-    ├── livedns.py       # 6 read + 10 write tools
-    ├── email.py         # 5 read + 7 write + 3 purchase tools
-    └── certificate.py   # 2 read + 1 write + 2 purchase tools
+    ├── organization.py  # organization tools (read)
+    ├── billing.py       # billing tools (read)
+    ├── domain.py        # domain tools (read + write + purchase)
+    ├── livedns.py       # LiveDNS tools (read + write)
+    ├── email.py         # email tools (read + write + purchase)
+    └── certificate.py   # certificate tools (read + write + purchase)
 ```
 
 ## Conventions
@@ -65,7 +65,7 @@ src/gandi_mcp/
 - **Defense-in-depth**: visibility gating in `server.py` (`mcp.disable(tags={"write"})`, `mcp.disable(tags={"purchase"})`) PLUS runtime `assert_readwrite` / `assert_purchases_allowed` calls inside each handler.
 - **Clients**: `httpx.AsyncClient` with `tenacity` retry (3 attempts, exponential backoff). Timeouts are **not** retried for non-idempotent methods to avoid double-spending on purchase endpoints. Responses pass through as `dict[str, Any]` / `list[dict[str, Any]]` — no Pydantic validation layer between clients and tools.
 - **Error mapping**: API errors → typed exceptions → `ToolError` with agent-readable messages.
-- **Tests**: `respx` for HTTP mocking, `pytest-asyncio` for async tests. Live read-only smoke tests run against api.gandi.net.
+- **Tests**: `respx` for HTTP mocking, `pytest-asyncio` for async tests.
 - **No print statements**: Use `logging` module (enforced by ruff T20 rule).
 
 ## Safety gates
@@ -130,7 +130,7 @@ async def domain_register(ctx: Context, data: dict[str, Any]) -> dict[str, Any]:
 
 ## Gandi API notes
 
-- **Auth**: `Authorization: Bearer <PAT>`. The legacy `Apikey <key>` scheme returns 403 on the v5 API as of 2025.
+- **Auth**: `Authorization: Bearer <PAT>`. The legacy `Apikey <key>` scheme is deprecated; use Bearer PATs.
 - **Base URL**: `https://api.gandi.net`
 - **Sharing ID**: passed as `?sharing_id=<uuid>` query parameter; applied to every request by `BaseGandiClient._merge_sharing_id` when `GANDI_SHARING_ID` is set.
-- **Rate limits**: Gandi returns 429 with a `Retry-After` header — the client currently maps 429 to `GandiRateLimitError` but does not auto-sleep; agents should back off on the surfaced error.
+- **Rate limits**: 429 maps to `GandiRateLimitError`. The client does not currently parse the `Retry-After` header or auto-sleep; agents should back off on the surfaced error.

@@ -146,8 +146,9 @@ def register_livedns_tools(mcp: FastMCP) -> None:
             fqdn: Fully-qualified domain name.
             name: Record name (e.g. "www", "@", "_acme-challenge").
             rrset_type: Record type (A, AAAA, CNAME, MX, TXT, SRV, CAA, etc.).
-            values: Record values — for MX include priority ("10 mail.example.com"),
-                for TXT quote the value ("\\"v=spf1 -all\\"").
+            values: Record values — for MX include priority ("10 mail.example.com").
+                TXT values are passed as raw strings (the API does not require
+                zonefile-style embedded quotes).
             ttl: Time-to-live in seconds (300-2592000). Zone default if omitted.
         """
         try:
