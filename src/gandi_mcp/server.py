@@ -28,64 +28,75 @@ class ServerContext:
     client: GandiClient | None = None
 
 
-@lifespan  # type: ignore[arg-type]
-async def server_lifespan(server: FastMCP) -> AsyncIterator[ServerContext]:
-    """Build the Gandi client, validate the PAT, and yield the context.
+def _build_lifespan(config: GandiConfig):  # type: ignore[no-untyped-def]
+    """Build a lifespan closure bound to the caller-supplied config.
 
-    When validation fails, tools are disabled so the agent sees an empty tool
-    list rather than a pile of registered tools that all raise at call time.
+    Previously the lifespan re-read env vars, which meant the config passed
+    to ``create_server`` was only used for visibility gating while the
+    runtime safety asserts saw whatever env was in place at yield time.
+    Closing over a single config keeps visibility and runtime layers in
+    sync.
     """
-    config = GandiConfig()
-    context = ServerContext(config=config)
 
-    if not config.authenticated:
-        logger.warning("GANDI_TOKEN not configured — all Gandi tools disabled")
-        if server is not None:
-            server.disable(tags={"gandi"})
-        yield context
-        return
+    @lifespan  # type: ignore[arg-type]
+    async def server_lifespan(server: FastMCP) -> AsyncIterator[ServerContext]:
+        """Build the Gandi client, validate the PAT, and yield the context.
 
-    assert config.gandi_token is not None
-    client = GandiClient(
-        base_url=config.gandi_api_base_url,
-        token=config.gandi_token.get_secret_value(),
-        sharing_id=config.gandi_sharing_id,
-        timeout=config.gandi_request_timeout,
-        max_retries=config.gandi_max_retries,
-    )
+        When validation fails, tools are disabled so the agent sees an empty
+        tool list rather than registered tools that all raise at call time.
+        """
+        context = ServerContext(config=config)
 
-    try:
-        valid = await client.validate_connection()
-    except (GandiError, httpx.HTTPError):
-        logger.exception("Failed to validate Gandi API connection — tools disabled")
-        await client.close()
-        if server is not None:
-            server.disable(tags={"gandi"})
-        yield context
-        return
+        if not config.authenticated:
+            logger.warning("GANDI_TOKEN not configured — all Gandi tools disabled")
+            if server is not None:
+                server.disable(tags={"gandi"})
+            yield context
+            return
 
-    if not valid:
-        logger.warning("Gandi API validation returned False — tools disabled")
-        await client.close()
-        if server is not None:
-            server.disable(tags={"gandi"})
-        yield context
-        return
+        assert config.gandi_token is not None
+        client = GandiClient(
+            base_url=config.gandi_api_base_url,
+            token=config.gandi_token.get_secret_value(),
+            sharing_id=config.gandi_sharing_id,
+            timeout=config.gandi_request_timeout,
+            max_retries=config.gandi_max_retries,
+        )
 
-    context.client = client
-    logger.info(
-        "Gandi MCP ready — mode=%s, purchases=%s",
-        config.gandi_mode.value,
-        "allowed" if config.purchases_enabled else "BLOCKED",
-    )
-
-    try:
-        yield context
-    finally:
         try:
+            valid = await client.validate_connection()
+        except (GandiError, httpx.HTTPError):
+            logger.exception("Failed to validate Gandi API connection — tools disabled")
             await client.close()
-        except (OSError, httpx.HTTPError):
-            logger.exception("Error closing Gandi client")
+            if server is not None:
+                server.disable(tags={"gandi"})
+            yield context
+            return
+
+        if not valid:
+            logger.warning("Gandi API validation returned False — tools disabled")
+            await client.close()
+            if server is not None:
+                server.disable(tags={"gandi"})
+            yield context
+            return
+
+        context.client = client
+        logger.info(
+            "Gandi MCP ready — mode=%s, purchases=%s",
+            config.gandi_mode.value,
+            "allowed" if config.purchases_enabled else "BLOCKED",
+        )
+
+        try:
+            yield context
+        finally:
+            try:
+                await client.close()
+            except (OSError, httpx.HTTPError):
+                logger.exception("Error closing Gandi client")
+
+    return server_lifespan
 
 
 def create_server(config: GandiConfig | None = None) -> FastMCP:
@@ -100,7 +111,7 @@ def create_server(config: GandiConfig | None = None) -> FastMCP:
             "organizations, and certificates via the Gandi v5 API. Write and "
             "purchase tools are gated behind explicit env flags for safety."
         ),
-        lifespan=server_lifespan,
+        lifespan=_build_lifespan(config),
     )
 
     from gandi_mcp.tools import register_all_tools
