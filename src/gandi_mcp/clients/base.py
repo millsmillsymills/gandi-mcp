@@ -73,25 +73,71 @@ class BaseGandiClient:
         merged["sharing_id"] = self._sharing_id
         return merged
 
+    @staticmethod
+    def _parse_error_body(response: httpx.Response) -> tuple[str, dict[str, Any] | None]:
+        """Extract a readable message and the parsed JSON body from an error response.
+
+        Returns ``(message, details)`` where ``message`` is the preferred human
+        description (Gandi's ``cause`` or ``message`` when available, else the
+        raw body truncated to 500 chars) and ``details`` is the full parsed
+        JSON dict or ``None`` when the body wasn't JSON.
+        """
+        content_type = response.headers.get("content-type", "")
+        if "application/json" in content_type and response.content:
+            try:
+                parsed = response.json()
+            except ValueError:
+                return response.text[:500], None
+            if isinstance(parsed, dict):
+                parts = [str(parsed[k]) for k in ("cause", "message") if parsed.get(k)]
+                message = " — ".join(parts) if parts else response.text[:500]
+                return message, parsed
+            return response.text[:500], None
+        return response.text[:500], None
+
+    @staticmethod
+    def _parse_retry_after(response: httpx.Response) -> int | None:
+        """Parse ``Retry-After`` as seconds. HTTP-date form is not honored."""
+        raw = response.headers.get("retry-after")
+        if not raw:
+            return None
+        try:
+            return max(0, int(raw))
+        except ValueError:
+            return None
+
     def _raise_for_status(self, response: httpx.Response) -> None:
-        """Map HTTP status codes to typed exceptions."""
+        """Map HTTP status codes to typed exceptions.
+
+        Parses JSON error bodies (when the server sends them) to surface
+        Gandi's structured ``cause`` / ``message`` fields and attach the full
+        parsed dict as ``details`` on the raised exception. Non-JSON bodies
+        fall back to a truncated raw-text representation.
+        """
         if response.is_success:
             return
         status = response.status_code
-        body = response.text[:500]
+        body, details = self._parse_error_body(response)
+        message = f"HTTP {status}: {body}"
+
         if status == 400:
-            raise GandiBadRequestError(f"HTTP {status}: {body}", status_code=status)
+            raise GandiBadRequestError(message, status_code=status, details=details)
         if status in (401, 403):
-            raise GandiAuthError(f"HTTP {status}: {body}", status_code=status)
+            raise GandiAuthError(message, status_code=status, details=details)
         if status == 404:
-            raise GandiNotFoundError(f"HTTP {status}: {body}", status_code=status)
+            raise GandiNotFoundError(message, status_code=status, details=details)
         if status == 409:
-            raise GandiConflictError(f"HTTP {status}: {body}", status_code=status)
+            raise GandiConflictError(message, status_code=status, details=details)
         if status == 429:
-            raise GandiRateLimitError(f"HTTP {status}: {body}", status_code=status)
+            raise GandiRateLimitError(
+                message,
+                status_code=status,
+                details=details,
+                retry_after=self._parse_retry_after(response),
+            )
         if 500 <= status < 600:
-            raise GandiServerError(f"HTTP {status}: {body}", status_code=status)
-        raise GandiError(f"HTTP {status}: {body}", status_code=status)
+            raise GandiServerError(message, status_code=status, details=details)
+        raise GandiError(message, status_code=status, details=details)
 
     async def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         """Execute an HTTP request with retry on transient errors.
@@ -120,7 +166,7 @@ class BaseGandiClient:
         try:
             response = await _do()
         except httpx.TimeoutException as exc:
-            raise GandiTimeoutError(str(exc)) from exc
+            raise GandiTimeoutError(str(exc), method=method) from exc
         except httpx.ConnectError as exc:
             raise GandiConnectionError(str(exc)) from exc
         except httpx.HTTPError as exc:
