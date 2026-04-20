@@ -34,7 +34,11 @@ class GandiConfig(BaseSettings):
     # General
     gandi_api_base_url: str = "https://api.gandi.net"
     gandi_request_timeout: int = Field(default=30, gt=0)
-    gandi_max_retries: int = Field(default=3, ge=0)
+    gandi_max_retries: int = Field(
+        default=3,
+        ge=1,
+        description="Total request attempts including the first (1 = no retry).",
+    )
 
     @property
     def is_readwrite(self) -> bool:

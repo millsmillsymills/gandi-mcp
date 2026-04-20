@@ -93,13 +93,18 @@ class TestFieldConstraints:
         with pytest.raises(ValidationError, match="greater than 0"):
             GandiConfig(_env_file=None, gandi_request_timeout=0)
 
-    def test_max_retries_negative_rejected(self):
-        with pytest.raises(ValidationError, match="greater than or equal to 0"):
+    def test_max_retries_below_one_rejected(self):
+        # 0 is tempting as "disable retries" but tenacity.stop_after_attempt(0)
+        # stops before the first attempt, breaking every request. Use 1 instead.
+        with pytest.raises(ValidationError, match="greater than or equal to 1"):
+            GandiConfig(_env_file=None, gandi_max_retries=0)
+        with pytest.raises(ValidationError, match="greater than or equal to 1"):
             GandiConfig(_env_file=None, gandi_max_retries=-1)
 
-    def test_max_retries_zero_accepted(self):
-        config = GandiConfig(_env_file=None, gandi_max_retries=0)
-        assert config.gandi_max_retries == 0
+    def test_max_retries_one_accepted(self):
+        # 1 = attempt once, no retry
+        config = GandiConfig(_env_file=None, gandi_max_retries=1)
+        assert config.gandi_max_retries == 1
 
 
 class TestHandleClientError:
