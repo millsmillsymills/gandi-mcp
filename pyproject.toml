@@ -10,16 +10,34 @@ readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
 authors = [{ name = "millsmillsymills" }]
-keywords = ["gandi", "mcp", "model-context-protocol", "domains", "dns", "livedns"]
+keywords = [
+    "gandi",
+    "mcp",
+    "model-context-protocol",
+    "domains",
+    "registrar",
+    "dns",
+    "livedns",
+    "email",
+    "certificates",
+    "tls",
+    "fastmcp",
+    "claude",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
+    "Environment :: Console",
     "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
     "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Topic :: Communications :: Email",
     "Topic :: Internet :: Name Service (DNS)",
+    "Topic :: Security :: Cryptography",
     "Topic :: System :: Systems Administration",
     "Typing :: Typed",
 ]
@@ -50,6 +68,7 @@ gandi-mcp = "gandi_mcp.__main__:main"
 Homepage = "https://github.com/millsmillsymills/gandi-mcp"
 Repository = "https://github.com/millsmillsymills/gandi-mcp"
 Issues = "https://github.com/millsmillsymills/gandi-mcp/issues"
+Changelog = "https://github.com/millsmillsymills/gandi-mcp/releases"
 
 # =============================================================================
 # Ruff — linting and formatting
