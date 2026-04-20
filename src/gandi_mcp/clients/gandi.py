@@ -3,8 +3,20 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 from gandi_mcp.clients.base import BaseGandiClient
+
+
+def _seg(value: str) -> str:
+    """Percent-encode a path segment.
+
+    API path segments (FQDN, mailbox_id, record name, etc.) arrive from MCP
+    callers and may legitimately contain ``/``, ``.``, ``_``, wildcards, or
+    other characters that would otherwise shift into a different API path or
+    query. ``safe=""`` encodes every reserved character including ``/``.
+    """
+    return quote(value, safe="")
 
 
 class GandiClient(BaseGandiClient):
@@ -35,20 +47,22 @@ class GandiClient(BaseGandiClient):
 
     async def get_organization(self, org_id: str) -> dict[str, Any]:
         """Get a specific organization."""
-        result: dict[str, Any] = await self.get(f"/v5/organization/organizations/{org_id}")
+        result: dict[str, Any] = await self.get(f"/v5/organization/organizations/{_seg(org_id)}")
         return result
 
     async def list_customers(self, org_id: str, **params: Any) -> list[dict[str, Any]]:
         """List customers under a reseller organization."""
         result: list[dict[str, Any]] = await self.get(
-            f"/v5/organization/organizations/{org_id}/customers",
+            f"/v5/organization/organizations/{_seg(org_id)}/customers",
             params={k: v for k, v in params.items() if v is not None},
         )
         return result
 
     async def get_customer(self, org_id: str, customer_id: str) -> dict[str, Any]:
         """Get a specific customer of a reseller organization."""
-        result: dict[str, Any] = await self.get(f"/v5/organization/organizations/{org_id}/customers/{customer_id}")
+        result: dict[str, Any] = await self.get(
+            f"/v5/organization/organizations/{_seg(org_id)}/customers/{_seg(customer_id)}"
+        )
         return result
 
     # ═════════════════════════════════════════════════════════════════════
@@ -62,7 +76,7 @@ class GandiClient(BaseGandiClient):
 
     async def get_billing_info_for_org(self, sharing_id: str) -> dict[str, Any]:
         """Billing info for a specific organization (by sharing_id)."""
-        result: dict[str, Any] = await self.get(f"/v5/billing/info/{sharing_id}")
+        result: dict[str, Any] = await self.get(f"/v5/billing/info/{_seg(sharing_id)}")
         return result
 
     async def get_price_catalog(self, product_type: str, **params: Any) -> dict[str, Any]:
@@ -74,7 +88,7 @@ class GandiClient(BaseGandiClient):
         ``phoneadvisory``.
         """
         result: dict[str, Any] = await self.get(
-            f"/v5/billing/price/{product_type}",
+            f"/v5/billing/price/{_seg(product_type)}",
             params={k: v for k, v in params.items() if v is not None},
         )
         return result
@@ -93,7 +107,7 @@ class GandiClient(BaseGandiClient):
 
     async def get_domain(self, fqdn: str) -> dict[str, Any]:
         """Retrieve full details and configuration for a domain."""
-        result: dict[str, Any] = await self.get(f"/v5/domain/domains/{fqdn}")
+        result: dict[str, Any] = await self.get(f"/v5/domain/domains/{_seg(fqdn)}")
         return result
 
     async def check_availability(self, name: str, **params: Any) -> dict[str, Any]:
@@ -110,7 +124,7 @@ class GandiClient(BaseGandiClient):
 
     async def get_domain_claims(self, fqdn: str) -> dict[str, Any]:
         """TMCH trademark claims for a candidate registration."""
-        result: dict[str, Any] = await self.get(f"/v5/domain/domains/{fqdn}/claims")
+        result: dict[str, Any] = await self.get(f"/v5/domain/domains/{_seg(fqdn)}/claims")
         return result
 
     async def register_domain(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -125,75 +139,75 @@ class GandiClient(BaseGandiClient):
 
     async def delete_domain(self, fqdn: str) -> dict[str, Any]:
         """Delete a domain (restricted feature — typically only for test TLDs)."""
-        result: dict[str, Any] = await self.delete(f"/v5/domain/domains/{fqdn}")
+        result: dict[str, Any] = await self.delete(f"/v5/domain/domains/{_seg(fqdn)}")
         return result
 
     async def set_autorenew(self, fqdn: str, data: dict[str, Any]) -> dict[str, Any]:
         """Configure autorenewal (payload: ``enabled``, ``duration``, ``org_id``)."""
-        result: dict[str, Any] = await self.patch(f"/v5/domain/domains/{fqdn}/autorenew", json=data)
+        result: dict[str, Any] = await self.patch(f"/v5/domain/domains/{_seg(fqdn)}/autorenew", json=data)
         return result
 
     async def reset_authinfo(self, fqdn: str) -> dict[str, Any]:
         """Regenerate the domain's authorization (transfer) code."""
-        result: dict[str, Any] = await self.put(f"/v5/domain/domains/{fqdn}/authinfo")
+        result: dict[str, Any] = await self.put(f"/v5/domain/domains/{_seg(fqdn)}/authinfo")
         return result
 
     async def initiate_ownership_change(self, fqdn: str, data: dict[str, Any]) -> dict[str, Any]:
         """Initiate an ownership change (``changeowner``)."""
-        result: dict[str, Any] = await self.post(f"/v5/domain/changeowner/{fqdn}", json=data)
+        result: dict[str, Any] = await self.post(f"/v5/domain/changeowner/{_seg(fqdn)}", json=data)
         return result
 
     async def get_ownership_change_status(self, fqdn: str) -> dict[str, Any]:
         """Check the status of a pending ownership change."""
-        result: dict[str, Any] = await self.get(f"/v5/domain/changeowner/{fqdn}")
+        result: dict[str, Any] = await self.get(f"/v5/domain/changeowner/{_seg(fqdn)}")
         return result
 
     async def resend_foa(self, fqdn: str) -> dict[str, Any]:
         """Resend the Form-of-Authorization email to the current owner."""
-        result: dict[str, Any] = await self.post(f"/v5/domain/changeowner/{fqdn}/foa")
+        result: dict[str, Any] = await self.post(f"/v5/domain/changeowner/{_seg(fqdn)}/foa")
         return result
 
     # ── Contacts ────────────────────────────────────────────────────────
 
     async def get_domain_contacts(self, fqdn: str) -> dict[str, Any]:
         """Current contact block for a domain."""
-        result: dict[str, Any] = await self.get(f"/v5/domain/domains/{fqdn}/contacts")
+        result: dict[str, Any] = await self.get(f"/v5/domain/domains/{_seg(fqdn)}/contacts")
         return result
 
     async def update_domain_contacts(self, fqdn: str, data: dict[str, Any]) -> dict[str, Any]:
         """Update the admin/tech/bill contacts for a domain."""
-        result: dict[str, Any] = await self.patch(f"/v5/domain/domains/{fqdn}/contacts", json=data)
+        result: dict[str, Any] = await self.patch(f"/v5/domain/domains/{_seg(fqdn)}/contacts", json=data)
         return result
 
     # ── Nameservers / Glue records ──────────────────────────────────────
 
     async def get_nameservers(self, fqdn: str) -> list[str]:
         """Currently configured nameservers."""
-        result: list[str] = await self.get(f"/v5/domain/domains/{fqdn}/nameservers")
+        result: list[str] = await self.get(f"/v5/domain/domains/{_seg(fqdn)}/nameservers")
         return result
 
     async def set_nameservers(self, fqdn: str, nameservers: list[str]) -> dict[str, Any]:
         """Replace the domain's nameservers."""
         result: dict[str, Any] = await self.put(
-            f"/v5/domain/domains/{fqdn}/nameservers",
+            f"/v5/domain/domains/{_seg(fqdn)}/nameservers",
             json={"nameservers": nameservers},
         )
         return result
 
     async def list_glue_records(self, fqdn: str) -> list[dict[str, Any]]:
         """List glue records (in-bailiwick host records)."""
-        result: list[dict[str, Any]] = await self.get(f"/v5/domain/domains/{fqdn}/hosts")
+        result: list[dict[str, Any]] = await self.get(f"/v5/domain/domains/{_seg(fqdn)}/hosts")
         return result
 
     async def get_glue_record(self, fqdn: str, name: str) -> dict[str, Any]:
         """Get a specific glue record by name."""
-        result: dict[str, Any] = await self.get(f"/v5/domain/domains/{fqdn}/hosts/{name}")
+        result: dict[str, Any] = await self.get(f"/v5/domain/domains/{_seg(fqdn)}/hosts/{_seg(name)}")
         return result
 
     async def create_glue_record(self, fqdn: str, name: str, ips: list[str]) -> dict[str, Any]:
         """Create a glue record."""
         result: dict[str, Any] = await self.post(
-            f"/v5/domain/domains/{fqdn}/hosts",
+            f"/v5/domain/domains/{_seg(fqdn)}/hosts",
             json={"name": name, "ips": ips},
         )
         return result
@@ -201,53 +215,53 @@ class GandiClient(BaseGandiClient):
     async def update_glue_record(self, fqdn: str, name: str, ips: list[str]) -> dict[str, Any]:
         """Update a glue record's IPs."""
         result: dict[str, Any] = await self.put(
-            f"/v5/domain/domains/{fqdn}/hosts/{name}",
+            f"/v5/domain/domains/{_seg(fqdn)}/hosts/{_seg(name)}",
             json={"ips": ips},
         )
         return result
 
     async def delete_glue_record(self, fqdn: str, name: str) -> dict[str, Any]:
         """Delete a glue record."""
-        result: dict[str, Any] = await self.delete(f"/v5/domain/domains/{fqdn}/hosts/{name}")
+        result: dict[str, Any] = await self.delete(f"/v5/domain/domains/{_seg(fqdn)}/hosts/{_seg(name)}")
         return result
 
     # ── DNSSEC ──────────────────────────────────────────────────────────
 
     async def list_dnssec_keys(self, fqdn: str) -> list[dict[str, Any]]:
         """List DNSSEC DS keys registered at the registry."""
-        result: list[dict[str, Any]] = await self.get(f"/v5/domain/domains/{fqdn}/dnskeys")
+        result: list[dict[str, Any]] = await self.get(f"/v5/domain/domains/{_seg(fqdn)}/dnskeys")
         return result
 
     async def create_dnssec_key(self, fqdn: str, data: dict[str, Any]) -> dict[str, Any]:
         """Register a DS record at the registry."""
-        result: dict[str, Any] = await self.post(f"/v5/domain/domains/{fqdn}/dnskeys", json=data)
+        result: dict[str, Any] = await self.post(f"/v5/domain/domains/{_seg(fqdn)}/dnskeys", json=data)
         return result
 
     async def delete_dnssec_key(self, fqdn: str, key_id: str) -> dict[str, Any]:
         """Remove a DS record."""
-        result: dict[str, Any] = await self.delete(f"/v5/domain/domains/{fqdn}/dnskeys/{key_id}")
+        result: dict[str, Any] = await self.delete(f"/v5/domain/domains/{_seg(fqdn)}/dnskeys/{_seg(key_id)}")
         return result
 
     # ── Renewal / Transfer (purchases) ──────────────────────────────────
 
     async def get_renew_info(self, fqdn: str) -> dict[str, Any]:
         """Price and eligibility preview for a domain renewal."""
-        result: dict[str, Any] = await self.get(f"/v5/domain/domains/{fqdn}/renew")
+        result: dict[str, Any] = await self.get(f"/v5/domain/domains/{_seg(fqdn)}/renew")
         return result
 
     async def renew_domain(self, fqdn: str, data: dict[str, Any]) -> dict[str, Any]:
         """Renew a domain (SPENDS MONEY)."""
-        result: dict[str, Any] = await self.post(f"/v5/domain/domains/{fqdn}/renew", json=data)
+        result: dict[str, Any] = await self.post(f"/v5/domain/domains/{_seg(fqdn)}/renew", json=data)
         return result
 
     async def get_transferin_info(self, fqdn: str) -> dict[str, Any]:
         """Check transfer-in availability / price preview."""
-        result: dict[str, Any] = await self.get(f"/v5/domain/transferin/{fqdn}")
+        result: dict[str, Any] = await self.get(f"/v5/domain/transferin/{_seg(fqdn)}")
         return result
 
     async def transfer_in(self, fqdn: str, data: dict[str, Any]) -> dict[str, Any]:
         """Initiate a domain transfer-in (SPENDS MONEY)."""
-        result: dict[str, Any] = await self.post(f"/v5/domain/transferin/{fqdn}", json=data)
+        result: dict[str, Any] = await self.post(f"/v5/domain/transferin/{_seg(fqdn)}", json=data)
         return result
 
     # ═════════════════════════════════════════════════════════════════════
@@ -261,7 +275,7 @@ class GandiClient(BaseGandiClient):
 
     async def livedns_get_domain(self, fqdn: str) -> dict[str, Any]:
         """LiveDNS zone properties for a domain."""
-        result: dict[str, Any] = await self.get(f"/v5/livedns/domains/{fqdn}")
+        result: dict[str, Any] = await self.get(f"/v5/livedns/domains/{_seg(fqdn)}")
         return result
 
     async def livedns_add_domain(self, fqdn: str) -> dict[str, Any]:
@@ -271,12 +285,12 @@ class GandiClient(BaseGandiClient):
 
     async def livedns_patch_domain(self, fqdn: str, data: dict[str, Any]) -> dict[str, Any]:
         """Update LiveDNS zone settings (``automatic_snapshots`` etc.)."""
-        result: dict[str, Any] = await self.patch(f"/v5/livedns/domains/{fqdn}", json=data)
+        result: dict[str, Any] = await self.patch(f"/v5/livedns/domains/{_seg(fqdn)}", json=data)
         return result
 
     async def livedns_list_nameservers(self, fqdn: str) -> list[str]:
         """LiveDNS nameservers for a domain."""
-        result: list[str] = await self.get(f"/v5/livedns/domains/{fqdn}/nameservers")
+        result: list[str] = await self.get(f"/v5/livedns/domains/{_seg(fqdn)}/nameservers")
         return result
 
     async def livedns_list_rrtypes(self) -> list[str]:
@@ -293,11 +307,11 @@ class GandiClient(BaseGandiClient):
         rrset_type: str | None = None,
     ) -> list[dict[str, Any]]:
         """List records for a domain, optionally filtered by name and/or type."""
-        path = f"/v5/livedns/domains/{fqdn}/records"
+        path = f"/v5/livedns/domains/{_seg(fqdn)}/records"
         if name and rrset_type:
-            path = f"{path}/{name}/{rrset_type}"
+            path = f"{path}/{_seg(name)}/{_seg(rrset_type)}"
         elif name:
-            path = f"{path}/{name}"
+            path = f"{path}/{_seg(name)}"
         result: list[dict[str, Any]] = await self.get(path)
         return result
 
@@ -318,7 +332,7 @@ class GandiClient(BaseGandiClient):
         if ttl is not None:
             payload["rrset_ttl"] = ttl
         result: dict[str, Any] = await self.post(
-            f"/v5/livedns/domains/{fqdn}/records",
+            f"/v5/livedns/domains/{_seg(fqdn)}/records",
             json=payload,
         )
         return result
@@ -336,7 +350,7 @@ class GandiClient(BaseGandiClient):
         if ttl is not None:
             payload["rrset_ttl"] = ttl
         result: dict[str, Any] = await self.put(
-            f"/v5/livedns/domains/{fqdn}/records/{name}/{rrset_type}",
+            f"/v5/livedns/domains/{_seg(fqdn)}/records/{_seg(name)}/{_seg(rrset_type)}",
             json=payload,
         )
         return result
@@ -344,39 +358,41 @@ class GandiClient(BaseGandiClient):
     async def livedns_replace_zone(self, fqdn: str, items: list[dict[str, Any]]) -> dict[str, Any]:
         """Replace ALL records for a domain (destructive bulk write)."""
         result: dict[str, Any] = await self.put(
-            f"/v5/livedns/domains/{fqdn}/records",
+            f"/v5/livedns/domains/{_seg(fqdn)}/records",
             json={"items": items},
         )
         return result
 
     async def livedns_delete_record(self, fqdn: str, name: str, rrset_type: str) -> dict[str, Any]:
         """Delete a specific (name, type) record set."""
-        result: dict[str, Any] = await self.delete(f"/v5/livedns/domains/{fqdn}/records/{name}/{rrset_type}")
+        result: dict[str, Any] = await self.delete(
+            f"/v5/livedns/domains/{_seg(fqdn)}/records/{_seg(name)}/{_seg(rrset_type)}"
+        )
         return result
 
     async def livedns_delete_all_records(self, fqdn: str) -> dict[str, Any]:
         """Delete ALL records for a domain (irreversibly destructive)."""
-        result: dict[str, Any] = await self.delete(f"/v5/livedns/domains/{fqdn}/records")
+        result: dict[str, Any] = await self.delete(f"/v5/livedns/domains/{_seg(fqdn)}/records")
         return result
 
     # ── DNSSEC (LiveDNS) ────────────────────────────────────────────────
 
     async def livedns_list_keys(self, fqdn: str) -> list[dict[str, Any]]:
         """List LiveDNS DNSSEC keys for a domain."""
-        result: list[dict[str, Any]] = await self.get(f"/v5/livedns/domains/{fqdn}/keys")
+        result: list[dict[str, Any]] = await self.get(f"/v5/livedns/domains/{_seg(fqdn)}/keys")
         return result
 
     async def livedns_create_key(self, fqdn: str, flags: int = 257) -> dict[str, Any]:
         """Create a DNSSEC key (defaults to KSK, flags=257)."""
         result: dict[str, Any] = await self.post(
-            f"/v5/livedns/domains/{fqdn}/keys",
+            f"/v5/livedns/domains/{_seg(fqdn)}/keys",
             json={"flags": flags},
         )
         return result
 
     async def livedns_delete_key(self, fqdn: str, key_id: str) -> dict[str, Any]:
         """Delete a LiveDNS DNSSEC key."""
-        result: dict[str, Any] = await self.delete(f"/v5/livedns/domains/{fqdn}/keys/{key_id}")
+        result: dict[str, Any] = await self.delete(f"/v5/livedns/domains/{_seg(fqdn)}/keys/{_seg(key_id)}")
         return result
 
     # ═════════════════════════════════════════════════════════════════════
@@ -386,37 +402,37 @@ class GandiClient(BaseGandiClient):
     async def email_list_mailboxes(self, domain: str, **params: Any) -> list[dict[str, Any]]:
         """List mailboxes for a domain."""
         result: list[dict[str, Any]] = await self.get(
-            f"/v5/email/mailboxes/{domain}",
+            f"/v5/email/mailboxes/{_seg(domain)}",
             params={k: v for k, v in params.items() if v is not None},
         )
         return result
 
     async def email_get_mailbox(self, domain: str, mailbox_id: str) -> dict[str, Any]:
         """Get a specific mailbox."""
-        result: dict[str, Any] = await self.get(f"/v5/email/mailboxes/{domain}/{mailbox_id}")
+        result: dict[str, Any] = await self.get(f"/v5/email/mailboxes/{_seg(domain)}/{_seg(mailbox_id)}")
         return result
 
     async def email_create_mailbox(self, domain: str, data: dict[str, Any]) -> dict[str, Any]:
         """Create a mailbox (may consume a slot — typically SPENDS MONEY)."""
-        result: dict[str, Any] = await self.post(f"/v5/email/mailboxes/{domain}", json=data)
+        result: dict[str, Any] = await self.post(f"/v5/email/mailboxes/{_seg(domain)}", json=data)
         return result
 
     async def email_update_mailbox(self, domain: str, mailbox_id: str, data: dict[str, Any]) -> dict[str, Any]:
         """Update a mailbox (password, aliases, quota, responder, etc.)."""
         result: dict[str, Any] = await self.patch(
-            f"/v5/email/mailboxes/{domain}/{mailbox_id}",
+            f"/v5/email/mailboxes/{_seg(domain)}/{_seg(mailbox_id)}",
             json=data,
         )
         return result
 
     async def email_delete_mailbox(self, domain: str, mailbox_id: str) -> dict[str, Any]:
         """Delete a mailbox."""
-        result: dict[str, Any] = await self.delete(f"/v5/email/mailboxes/{domain}/{mailbox_id}")
+        result: dict[str, Any] = await self.delete(f"/v5/email/mailboxes/{_seg(domain)}/{_seg(mailbox_id)}")
         return result
 
     async def email_purge_mailbox(self, domain: str, mailbox_id: str) -> dict[str, Any]:
         """Purge the contents of a mailbox (destructive)."""
-        result: dict[str, Any] = await self.delete(f"/v5/email/mailboxes/{domain}/{mailbox_id}/contents")
+        result: dict[str, Any] = await self.delete(f"/v5/email/mailboxes/{_seg(domain)}/{_seg(mailbox_id)}/contents")
         return result
 
     # ── Forwards ────────────────────────────────────────────────────────
@@ -424,7 +440,7 @@ class GandiClient(BaseGandiClient):
     async def email_list_forwards(self, domain: str, **params: Any) -> list[dict[str, Any]]:
         """List forwarding addresses for a domain."""
         result: list[dict[str, Any]] = await self.get(
-            f"/v5/email/forwards/{domain}",
+            f"/v5/email/forwards/{_seg(domain)}",
             params={k: v for k, v in params.items() if v is not None},
         )
         return result
@@ -432,7 +448,7 @@ class GandiClient(BaseGandiClient):
     async def email_create_forward(self, domain: str, source: str, destinations: list[str]) -> dict[str, Any]:
         """Create a forwarding address."""
         result: dict[str, Any] = await self.post(
-            f"/v5/email/forwards/{domain}",
+            f"/v5/email/forwards/{_seg(domain)}",
             json={"source": source, "destinations": destinations},
         )
         return result
@@ -440,42 +456,42 @@ class GandiClient(BaseGandiClient):
     async def email_update_forward(self, domain: str, source: str, destinations: list[str]) -> dict[str, Any]:
         """Replace destinations of an existing forward."""
         result: dict[str, Any] = await self.put(
-            f"/v5/email/forwards/{domain}/{source}",
+            f"/v5/email/forwards/{_seg(domain)}/{_seg(source)}",
             json={"destinations": destinations},
         )
         return result
 
     async def email_delete_forward(self, domain: str, source: str) -> dict[str, Any]:
         """Delete a forward."""
-        result: dict[str, Any] = await self.delete(f"/v5/email/forwards/{domain}/{source}")
+        result: dict[str, Any] = await self.delete(f"/v5/email/forwards/{_seg(domain)}/{_seg(source)}")
         return result
 
     # ── Slots ───────────────────────────────────────────────────────────
 
     async def email_list_slots(self, domain: str) -> list[dict[str, Any]]:
         """List mailbox slots for a domain."""
-        result: list[dict[str, Any]] = await self.get(f"/v5/email/slots/{domain}")
+        result: list[dict[str, Any]] = await self.get(f"/v5/email/slots/{_seg(domain)}")
         return result
 
     async def email_get_slot(self, domain: str, slot_id: str) -> dict[str, Any]:
         """Get a specific slot."""
-        result: dict[str, Any] = await self.get(f"/v5/email/slots/{domain}/{slot_id}")
+        result: dict[str, Any] = await self.get(f"/v5/email/slots/{_seg(domain)}/{_seg(slot_id)}")
         return result
 
     async def email_create_slot(self, domain: str, data: dict[str, Any]) -> dict[str, Any]:
         """Create a mailbox slot (SPENDS MONEY)."""
-        result: dict[str, Any] = await self.post(f"/v5/email/slots/{domain}", json=data)
+        result: dict[str, Any] = await self.post(f"/v5/email/slots/{_seg(domain)}", json=data)
         return result
 
     async def email_refund_slot(self, domain: str, slot_id: str) -> dict[str, Any]:
         """Refund/delete a slot (within the refund window)."""
-        result: dict[str, Any] = await self.delete(f"/v5/email/slots/{domain}/{slot_id}")
+        result: dict[str, Any] = await self.delete(f"/v5/email/slots/{_seg(domain)}/{_seg(slot_id)}")
         return result
 
     async def email_renew_mailbox(self, domain: str, email: str, data: dict[str, Any]) -> dict[str, Any]:
         """Renew a single mailbox slot (SPENDS MONEY)."""
         result: dict[str, Any] = await self.post(
-            f"/v5/email/mailboxes/{domain}/{email}/renew",
+            f"/v5/email/mailboxes/{_seg(domain)}/{_seg(email)}/renew",
             json=data,
         )
         return result
@@ -494,7 +510,7 @@ class GandiClient(BaseGandiClient):
 
     async def cert_get(self, cert_id: str) -> dict[str, Any]:
         """Get a specific certificate."""
-        result: dict[str, Any] = await self.get(f"/v5/certificate/issued-certs/{cert_id}")
+        result: dict[str, Any] = await self.get(f"/v5/certificate/issued-certs/{_seg(cert_id)}")
         return result
 
     async def cert_issue(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -504,13 +520,13 @@ class GandiClient(BaseGandiClient):
 
     async def cert_revoke(self, cert_id: str) -> dict[str, Any]:
         """Revoke a certificate."""
-        result: dict[str, Any] = await self.delete(f"/v5/certificate/issued-certs/{cert_id}")
+        result: dict[str, Any] = await self.delete(f"/v5/certificate/issued-certs/{_seg(cert_id)}")
         return result
 
     async def cert_renew(self, cert_id: str, data: dict[str, Any]) -> dict[str, Any]:
         """Renew a certificate (SPENDS MONEY)."""
         result: dict[str, Any] = await self.post(
-            f"/v5/certificate/issued-certs/{cert_id}/renew",
+            f"/v5/certificate/issued-certs/{_seg(cert_id)}/renew",
             json=data,
         )
         return result
