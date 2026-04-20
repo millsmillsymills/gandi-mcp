@@ -15,7 +15,13 @@ from fastmcp.server.lifespan import lifespan
 
 from gandi_mcp.clients.gandi import GandiClient
 from gandi_mcp.config import GandiConfig
-from gandi_mcp.errors import GandiError
+from gandi_mcp.errors import (
+    GandiAuthError,
+    GandiConnectionError,
+    GandiError,
+    GandiServerError,
+    GandiTimeoutError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +34,21 @@ class ServerContext:
     client: GandiClient | None = None
 
 
+def _classify_startup_error(exc: BaseException) -> str:
+    """Convert a startup exception into a short, actionable operator hint."""
+    if isinstance(exc, GandiAuthError):
+        return "authentication rejected by Gandi — regenerate GANDI_TOKEN"
+    if isinstance(exc, GandiTimeoutError):
+        return "Gandi API did not respond in time — check network / GANDI_REQUEST_TIMEOUT"
+    if isinstance(exc, GandiConnectionError):
+        return "cannot reach api.gandi.net — check network / DNS / GANDI_API_BASE_URL"
+    if isinstance(exc, GandiServerError):
+        return "Gandi API returned 5xx — upstream may be unhealthy, retry later"
+    if isinstance(exc, GandiError):
+        return f"Gandi API error: {type(exc).__name__}"
+    return f"unexpected error ({type(exc).__name__})"
+
+
 def _build_lifespan(config: GandiConfig):  # type: ignore[no-untyped-def]
     """Build a lifespan closure bound to the caller-supplied config.
 
@@ -38,19 +59,24 @@ def _build_lifespan(config: GandiConfig):  # type: ignore[no-untyped-def]
     sync.
     """
 
+    def _disable_all_tools(server: FastMCP | None) -> None:
+        if server is not None:
+            server.disable(tags={"gandi"})
+
     @lifespan  # type: ignore[arg-type]
     async def server_lifespan(server: FastMCP) -> AsyncIterator[ServerContext]:
         """Build the Gandi client, validate the PAT, and yield the context.
 
-        When validation fails, tools are disabled so the agent sees an empty
-        tool list rather than registered tools that all raise at call time.
+        On startup failure, tools are disabled and the reason is logged loudly
+        (level ERROR, with the typed exception). Agents still see an empty
+        tool list rather than tools that all raise — but operators get an
+        actionable line in the logs instead of "validation returned False".
         """
         context = ServerContext(config=config)
 
         if not config.authenticated:
-            logger.warning("GANDI_TOKEN not configured — all Gandi tools disabled")
-            if server is not None:
-                server.disable(tags={"gandi"})
+            logger.error("Gandi tools disabled: GANDI_TOKEN not configured")
+            _disable_all_tools(server)
             yield context
             return
 
@@ -64,20 +90,12 @@ def _build_lifespan(config: GandiConfig):  # type: ignore[no-untyped-def]
         )
 
         try:
-            valid = await client.validate_connection()
-        except (GandiError, httpx.HTTPError):
-            logger.exception("Failed to validate Gandi API connection — tools disabled")
+            await client.validate_connection()
+        except (GandiError, httpx.HTTPError) as exc:
+            reason = _classify_startup_error(exc)
+            logger.error("Gandi tools disabled: %s (%s)", reason, exc)
             await client.close()
-            if server is not None:
-                server.disable(tags={"gandi"})
-            yield context
-            return
-
-        if not valid:
-            logger.warning("Gandi API validation returned False — tools disabled")
-            await client.close()
-            if server is not None:
-                server.disable(tags={"gandi"})
+            _disable_all_tools(server)
             yield context
             return
 
