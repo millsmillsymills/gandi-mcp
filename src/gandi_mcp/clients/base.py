@@ -231,20 +231,19 @@ class BaseGandiClient:
 
     # ── Lifecycle ───────────────────────────────────────────────────────
 
-    async def validate_connection(self) -> bool:
+    async def validate_connection(self) -> None:
         """Validate connectivity + authentication by fetching user info.
+
+        Raises the underlying typed ``GandiError`` (or ``httpx.HTTPError``) on
+        failure so the caller can distinguish between auth failures, network
+        problems, and upstream 5xx. Returns ``None`` on success.
 
         ``/v5/organization/user-info`` is a tiny GET commonly reachable with
         a valid PAT; scoped PATs may not reach it, in which case startup
         falsely reports a disabled server. Revisit if that becomes a real
         operator complaint.
         """
-        try:
-            await self.get("/v5/organization/user-info")
-        except (GandiError, httpx.HTTPError):
-            return False
-        else:
-            return True
+        await self.get("/v5/organization/user-info")
 
     async def close(self) -> None:
         """Close the underlying HTTP client."""
