@@ -73,6 +73,13 @@ class TestAuthenticatedFlag:
         config = GandiConfig(_env_file=None, gandi_token="test")
         assert config.authenticated is True
 
+    def test_authenticated_false_when_token_empty_string(self):
+        # Misconfigured .env with GANDI_TOKEN= produces SecretStr("") — not None
+        # but still unusable. Must fail closed so lifespan surfaces the clean
+        # "token not configured" branch rather than a 401 from the API.
+        config = GandiConfig(_env_file=None, gandi_token="")
+        assert config.authenticated is False
+
 
 class TestDefaults:
     def test_default_base_url(self):

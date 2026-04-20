@@ -48,5 +48,5 @@ class GandiConfig(BaseSettings):
 
     @property
     def authenticated(self) -> bool:
-        """Whether a Gandi token has been configured."""
-        return self.gandi_token is not None
+        """Whether a non-empty Gandi token has been configured."""
+        return self.gandi_token is not None and bool(self.gandi_token.get_secret_value())
