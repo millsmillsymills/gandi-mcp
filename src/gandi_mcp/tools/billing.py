@@ -46,9 +46,9 @@ def register_billing_tools(mcp: FastMCP) -> None:
         Useful for previewing costs before any purchase-mode operation.
 
         Args:
-            product_type: One of "domain", "domain_option", "certificate",
-                "mailbox", "cloud", "simplehosting", "openstack", "tmch",
-                "phoneadvisory".
+            product_type: Product-type identifier — see the Gandi API docs
+                for the current list (common values: "domain", "certificate",
+                "mailbox").
             currency: ISO currency code ("USD", "EUR").
             country: ISO country code — affects tax-inclusive prices.
             grid: Pricing grid level ("A", "B", "C", "D", "E").

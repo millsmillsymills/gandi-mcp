@@ -215,7 +215,9 @@ def register_domain_tools(mcp: FastMCP) -> None:
         Args:
             fqdn: Fully-qualified domain name.
             enabled: True to enable autorenew, False to disable.
-            duration: Renewal duration in years (1-9) — required when enabling.
+            duration: Renewal duration in years — TLD-specific; use
+                `domain_get_renew_info` to preview valid durations. Required
+                when enabling.
         """
         try:
             assert_readwrite(ctx, "update autorenew")
@@ -359,7 +361,7 @@ def register_domain_tools(mcp: FastMCP) -> None:
         Args:
             fqdn: Fully-qualified domain name.
             algorithm: DNSSEC algorithm number (e.g. 13 for ECDSAP256SHA256).
-            digest_type: Digest algorithm (1=SHA1, 2=SHA256, 4=SHA384).
+            digest_type: IANA codepoint — commonly 1=SHA1, 2=SHA256, 4=SHA384.
             digest: Hex-encoded digest.
             keytag: Key tag (16-bit identifier).
         """
@@ -487,7 +489,8 @@ def register_domain_tools(mcp: FastMCP) -> None:
 
         Args:
             fqdn: Fully-qualified domain name.
-            duration: Renewal duration in years (1-9).
+            duration: Renewal duration in years — TLD-specific; use
+                `domain_get_renew_info` to preview valid durations.
             currency: ISO currency code (defaults to org default).
         """
         try:

@@ -188,9 +188,10 @@ class BaseGandiClient:
     async def validate_connection(self) -> bool:
         """Validate connectivity + authentication by fetching user info.
 
-        ``/v5/organization/user-info`` is a tiny GET that every valid PAT can
-        reach regardless of scope, making it the right probe for startup
-        validation.
+        ``/v5/organization/user-info`` is a tiny GET commonly reachable with
+        a valid PAT; scoped PATs may not reach it, in which case startup
+        falsely reports a disabled server. Revisit if that becomes a real
+        operator complaint.
         """
         try:
             await self.get("/v5/organization/user-info")
