@@ -12,6 +12,7 @@ from tenacity import (
     wait_exponential,
 )
 
+from gandi_mcp import __version__
 from gandi_mcp.errors import (
     GandiAuthError,
     GandiBadRequestError,
@@ -49,7 +50,7 @@ class BaseGandiClient:
             headers={
                 "Authorization": f"Bearer {token}",
                 "Accept": "application/json",
-                "User-Agent": "gandi-mcp/0.1.0 (+https://github.com/millsmillsymills/gandi-mcp)",
+                "User-Agent": f"gandi-mcp/{__version__} (+https://github.com/millsmillsymills/gandi-mcp)",
             },
             timeout=httpx.Timeout(timeout),
         )
@@ -73,14 +74,20 @@ class BaseGandiClient:
         merged["sharing_id"] = self._sharing_id
         return merged
 
-    @staticmethod
-    def _parse_error_body(response: httpx.Response) -> tuple[str, dict[str, Any] | None]:
-        """Extract a readable message and the parsed JSON body from an error response.
+    # Safe allowlist for error-body fields surfaced to the agent. Confused-deputy
+    # responses (e.g. a 403 listing owning org/customer info) could otherwise leak
+    # another tenant's identifiers through `GandiError.details`.
+    _ERROR_DETAIL_ALLOWED_KEYS = frozenset({"code", "cause", "message", "status", "object"})
+
+    @classmethod
+    def _parse_error_body(cls, response: httpx.Response) -> tuple[str, dict[str, Any] | None]:
+        """Extract a readable message and a scrubbed dict from an error response.
 
         Returns ``(message, details)`` where ``message`` is the preferred human
         description (Gandi's ``cause`` or ``message`` when available, else the
-        raw body truncated to 500 chars) and ``details`` is the full parsed
-        JSON dict or ``None`` when the body wasn't JSON.
+        raw body truncated to 500 chars) and ``details`` is the parsed JSON
+        body filtered to ``_ERROR_DETAIL_ALLOWED_KEYS``, or ``None`` when the
+        body wasn't JSON.
         """
         content_type = response.headers.get("content-type", "")
         if "application/json" in content_type and response.content:
@@ -91,7 +98,8 @@ class BaseGandiClient:
             if isinstance(parsed, dict):
                 parts = [str(parsed[k]) for k in ("cause", "message") if parsed.get(k)]
                 message = " — ".join(parts) if parts else response.text[:500]
-                return message, parsed
+                details = {k: v for k, v in parsed.items() if k in cls._ERROR_DETAIL_ALLOWED_KEYS}
+                return message, details
             return response.text[:500], None
         return response.text[:500], None
 

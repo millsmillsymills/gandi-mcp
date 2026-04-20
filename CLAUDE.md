@@ -1,4 +1,6 @@
-# CLAUDE.md — Project Intelligence for gandi-mcp
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
@@ -19,6 +21,11 @@ uv run mypy src/gandi_mcp/
 
 # Test (unit only)
 uv run pytest tests/unit/ -v
+
+# Run a single test file / class / test
+uv run pytest tests/unit/test_server_lifespan.py -v
+uv run pytest tests/unit/test_server.py::TestReadOnlyGate -v
+uv run pytest tests/unit/test_config.py::TestPurchaseGate::test_purchases_enabled_when_both_set -v
 
 # Test with coverage
 uv run pytest tests/unit/ --cov=gandi_mcp --cov-report=term-missing -m "not integration"
@@ -133,4 +140,19 @@ async def domain_register(ctx: Context, data: dict[str, Any]) -> dict[str, Any]:
 - **Auth**: `Authorization: Bearer <PAT>`. The legacy `Apikey <key>` scheme is deprecated; use Bearer PATs.
 - **Base URL**: `https://api.gandi.net`
 - **Sharing ID**: passed as `?sharing_id=<uuid>` query parameter; applied to every request by `BaseGandiClient._merge_sharing_id` when `GANDI_SHARING_ID` is set.
-- **Rate limits**: 429 maps to `GandiRateLimitError`. The client does not currently parse the `Retry-After` header or auto-sleep; agents should back off on the surfaced error.
+- **Rate limits**: 429 maps to `GandiRateLimitError`; the `Retry-After` header (seconds form only) is parsed onto `retry_after` and echoed in the surfaced `ToolError`.
+
+## Non-obvious invariants
+
+Properties enforced across files. A regression that quietly breaks any of these will pass local CI only if its test is also removed — each has a dedicated test pinning it.
+
+- **`sharing_id` is operator-owned.** `BaseGandiClient._merge_sharing_id` unconditionally overrides any caller-supplied `sharing_id` in params; a caller passing a *different* value raises `ValueError`. A future tool that forwards `**kwargs` cannot silently bypass operator scoping.
+- **`GandiConfig` is frozen.** Safety flags (`gandi_mode`, `gandi_allow_purchases`) cannot be reassigned after construction.
+- **`create_server(config)` threads config into the lifespan via a closure.** `_build_lifespan(config)` is called from `create_server` so visibility-gating and runtime-asserts see the same config. The lifespan does **not** re-read env vars.
+- **`validate_connection` raises** the underlying typed exception on failure (returns `None` on success). The lifespan classifies the exception into an actionable operator message — do not collapse it back to `bool`.
+- **POST / PATCH timeouts are never retried.** `BaseGandiClient._request` narrows `retry_on` to `ConnectError` only for non-GET/HEAD methods, preventing double-spend on purchase endpoints. `GandiTimeoutError.method` carries the HTTP method; `handle_client_error` uses it to warn the agent to check state before retrying a non-idempotent call.
+- **`GandiError.details`** holds the parsed JSON error body when Gandi returned one (Content-Type `application/json`); `cause` and `message` fields are surfaced in the exception message.
+- **Path segments are percent-encoded** via `_seg()` in `clients/gandi.py`. Raw `{fqdn}` / `{name}` / `{mailbox_id}` interpolation into URL paths is a regression — the helper is there to prevent `/` or `?` in a DNS record name from shifting into a different API path.
+- **Empty response body is an error unless 204.** `BaseGandiClient._parse_json` only returns `{}` for 204; any other status with no content raises `GandiError` rather than silently pretending the API returned an empty object.
+- **`authenticated` checks non-empty token.** `GandiConfig.authenticated` requires both `gandi_token is not None` AND a non-empty secret value; an empty-string `GANDI_TOKEN=` fails closed with the clean "not configured" branch, not a 401 from the API.
+- **`GANDI_MAX_RETRIES >= 1`** — the field is "total attempts including the first" (1 = no retry). `0` would make `tenacity.stop_after_attempt(0)` stop before the first attempt, breaking every request.

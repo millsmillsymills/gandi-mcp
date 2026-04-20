@@ -36,8 +36,32 @@ class TestStructuredErrorBody:
             # Human message includes cause + message.
             assert "Invalid request" in str(exc_info.value)
             assert "fqdn is required" in str(exc_info.value)
-            # Full body preserved for programmatic inspection.
+            # Allowlisted keys preserved for programmatic inspection.
             assert exc_info.value.details == body
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_error_details_scrubbed_to_allowlist(self, client: BaseGandiClient) -> None:
+        """Non-allowlisted fields (e.g. owner info from a confused-deputy 403) are dropped."""
+        body = {
+            "code": 403,
+            "cause": "Forbidden",
+            "message": "not your domain",
+            "object": "domain",
+            # Fields Gandi could theoretically return that we don't want to forward.
+            "owner": {"email": "someone-else@example.com", "org_id": "other-tenant"},
+            "internal_trace_id": "srv-42",
+        }
+        with respx.mock(base_url="https://api.gandi.net") as mock:
+            mock.get("/v5/domain/domains/example.com").mock(
+                return_value=httpx.Response(403, json=body, headers={"content-type": "application/json"}),
+            )
+            with pytest.raises(Exception) as exc_info:  # noqa: PT011
+                await client.get("/v5/domain/domains/example.com")
+            details = exc_info.value.details  # type: ignore[attr-defined]
+            assert details == {"code": 403, "cause": "Forbidden", "message": "not your domain", "object": "domain"}
+            assert "owner" not in details
+            assert "internal_trace_id" not in details
         await client.close()
 
     @pytest.mark.asyncio
