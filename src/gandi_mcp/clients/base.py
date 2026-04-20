@@ -128,9 +128,21 @@ class BaseGandiClient:
         return response
 
     def _parse_json(self, response: httpx.Response) -> Any:
-        """Parse JSON response body, wrapping decode errors as GandiError."""
-        if response.status_code == 204 or not response.content:
+        """Parse JSON response body, wrapping decode errors as GandiError.
+
+        Only 204 is allowed to return ``{}``. Any other status with an empty
+        body is surfaced as an error — a 200 with no content most often means
+        a proxy / CDN stripped or truncated the upstream response, and
+        returning ``{}`` would silently mislead the agent (e.g. "zero
+        records").
+        """
+        if response.status_code == 204:
             return {}
+        if not response.content:
+            raise GandiError(
+                f"Empty response body from HTTP {response.status_code}",
+                status_code=response.status_code,
+            )
         try:
             return response.json()
         except ValueError as exc:
