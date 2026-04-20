@@ -60,12 +60,17 @@ class BaseGandiClient:
         """Inject ``sharing_id`` into a request's query params when configured.
 
         Returns ``None`` when there are no params and no sharing_id, so we
-        don't send an empty ``?`` suffix.
+        don't send an empty ``?`` suffix. When ``sharing_id`` is configured,
+        it unconditionally overrides any caller-supplied value — operator
+        scoping is load-bearing for reseller / multi-org accounts and cannot
+        be bypassed by a per-call kwarg.
         """
         if self._sharing_id is None:
             return params
         merged = dict(params) if params else {}
-        merged.setdefault("sharing_id", self._sharing_id)
+        if "sharing_id" in merged and merged["sharing_id"] != self._sharing_id:
+            raise ValueError("sharing_id is managed by GANDI_SHARING_ID; do not pass it per-request")
+        merged["sharing_id"] = self._sharing_id
         return merged
 
     def _raise_for_status(self, response: httpx.Response) -> None:
