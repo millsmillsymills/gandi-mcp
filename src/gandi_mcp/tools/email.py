@@ -230,7 +230,7 @@ def register_email_tools(mcp: FastMCP) -> None:
 
     @mcp.tool(
         tags={"gandi", "email", "write"},
-        annotations={"readOnlyHint": False, "destructiveHint": False},
+        annotations={"readOnlyHint": False, "destructiveHint": True},
     )
     async def email_refund_slot(ctx: Context, domain: str, slot_id: str) -> dict[str, Any]:
         """Refund/delete an unused slot (within the refund window).

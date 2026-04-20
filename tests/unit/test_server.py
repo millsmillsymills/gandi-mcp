@@ -1,5 +1,7 @@
 """Tests for server creation and the tool-visibility gates."""
 
+from typing import ClassVar
+
 from gandi_mcp.config import GandiConfig, GandiMode
 from gandi_mcp.server import create_server
 
@@ -76,6 +78,33 @@ class TestFullAccess:
 
         assert "domain_register" not in tool_names
         assert "cert_issue" not in tool_names
+
+
+class TestDestructiveHints:
+    """Every delete/revoke/purge-style tool must be flagged destructiveHint=True."""
+
+    # Tools whose underlying API call removes state. MCP clients may branch
+    # on destructiveHint to show a confirmation prompt before invoking.
+    DESTRUCTIVE_TOOLS: ClassVar[set[str]] = {
+        "domain_delete",
+        "domain_delete_glue_record",
+        "domain_delete_dnssec_key",
+        "livedns_delete_record",
+        "email_delete_mailbox",
+        "email_delete_forward",
+        "email_purge_mailbox",
+        "email_refund_slot",
+        "cert_revoke",
+    }
+
+    async def test_destructive_tools_have_destructive_hint(self):
+        server = create_server(_config(gandi_mode=GandiMode.READWRITE, gandi_allow_purchases=True))
+        tools = {t.name: t for t in await server.list_tools()}
+        for name in self.DESTRUCTIVE_TOOLS:
+            tool = tools.get(name)
+            assert tool is not None, f"{name} not registered"
+            hint = getattr(tool.annotations, "destructiveHint", None) if tool.annotations else None
+            assert hint is True, f"{name} must have destructiveHint=True (got {hint!r})"
 
 
 class TestToolCounts:
