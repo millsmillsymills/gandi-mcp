@@ -21,7 +21,17 @@ class GandiMode(enum.StrEnum):
 class GandiConfig(BaseSettings):
     """Configuration loaded from environment variables and .env file."""
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "extra": "ignore",
+        # Safety flags (gandi_mode, gandi_allow_purchases) drive runtime
+        # write/purchase gating. Freezing closes the only remaining
+        # mutate-at-runtime hole: a stray reassignment from test code or a
+        # misguided tool could otherwise silently promote the server's risk
+        # tier mid-run.
+        "frozen": True,
+    }
 
     # Authentication
     gandi_token: SecretStr | None = None

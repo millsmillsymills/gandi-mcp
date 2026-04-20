@@ -88,6 +88,25 @@ class TestDefaults:
         assert config.gandi_max_retries == 3
 
 
+class TestConfigFrozen:
+    """Safety flags can't be reassigned post-construction."""
+
+    def test_assigning_gandi_mode_raises(self):
+        config = GandiConfig(_env_file=None, gandi_mode=GandiMode.READONLY)
+        with pytest.raises(ValidationError, match="frozen"):
+            config.gandi_mode = GandiMode.READWRITE  # type: ignore[misc]
+
+    def test_assigning_gandi_allow_purchases_raises(self):
+        config = GandiConfig(_env_file=None)
+        with pytest.raises(ValidationError, match="frozen"):
+            config.gandi_allow_purchases = True  # type: ignore[misc]
+
+    def test_assigning_gandi_token_raises(self):
+        config = GandiConfig(_env_file=None, gandi_token="x")
+        with pytest.raises(ValidationError, match="frozen"):
+            config.gandi_token = "y"  # type: ignore[misc]  # noqa: S105
+
+
 class TestFieldConstraints:
     def test_timeout_zero_rejected(self):
         with pytest.raises(ValidationError, match="greater than 0"):
