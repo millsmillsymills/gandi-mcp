@@ -142,6 +142,16 @@ async def domain_register(ctx: Context, data: dict[str, Any]) -> dict[str, Any]:
 - **Sharing ID**: passed as `?sharing_id=<uuid>` query parameter; applied to every request by `BaseGandiClient._merge_sharing_id` when `GANDI_SHARING_ID` is set.
 - **Rate limits**: 429 maps to `GandiRateLimitError`; the `Retry-After` header (seconds form only) is parsed onto `retry_after` and echoed in the surfaced `ToolError`.
 
+## v5 API gaps (manual fallbacks)
+
+Operations Gandi's v5 REST API does not expose, surfaced here so an LLM doesn't waste a turn searching for a tool that cannot exist:
+
+- **Registrar transfer-lock toggle.** v5 reports `clientTransferProhibited` in `GET /v5/domain/domains/{fqdn}` (surfaced via `domain_get_status`) but has no write endpoint to set it. The legacy XML-RPC API (`domain.status.lock` / `domain.status.unlock`) does, but this server is v5/Bearer only — adding XML-RPC would mean a second auth path. Unlocking is a manual UI step.
+- **Email subscription cancellation.** `email_refund_slot` only refunds an unused slot within the refund window; the recurring subscription itself has no v5 cancel endpoint.
+- **Outbound transfer state / approval.** v5 has no outbound-transfer endpoint; Gandi drives this via FOA email.
+
+A future PR could add an XML-RPC fallback for the lock toggle if it becomes load-bearing for any flow, but `GANDI_TOKEN` would gain a second meaning (PAT for v5, apikey for XML-RPC) and that asymmetry is the reason it isn't there today.
+
 ## Non-obvious invariants
 
 Properties enforced across files. A regression that quietly breaks any of these will pass local CI only if its test is also removed — each has a dedicated test pinning it.

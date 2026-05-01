@@ -8,11 +8,11 @@ Production-grade Python MCP server for the [Gandi v5 API](https://api.gandi.net/
 
 ## Features
 
-- **70 MCP tools** covering Gandi Domains, LiveDNS, Email, Billing, Organization, and Certificates (33 read / 29 write / 8 purchase)
+- **71 MCP tools** covering Gandi Domains, LiveDNS, Email, Billing, Organization, and Certificates (34 read / 29 write / 8 purchase)
 - **Three-tier safety model** — readonly (default) → readwrite → readwrite + purchases, gated at both tool-visibility and handler-runtime layers
 - **No-purchasing mode** — tools that spend money (domain registration, renewal, transfer-in, cert issuance, mailbox slots) are hidden by default even in readwrite mode
 - **Bearer auth** with optional `sharing_id` scoping for reseller / multi-org accounts
-- **Typed, linted, tested** — strict mypy, ruff, pytest (100 unit tests), bandit
+- **Typed, linted, tested** — strict mypy, ruff, pytest, bandit
 
 ## Quick Start
 
@@ -28,6 +28,21 @@ cp .env.example .env
 
 # Run
 uv run gandi-mcp
+```
+
+### Global install (system-wide CLI)
+
+To install `gandi-mcp` as a global binary on `PATH` (useful when wiring it into Claude Code without a per-project checkout):
+
+```bash
+# From the cloned repo
+uv tool install /absolute/path/to/gandi-mcp
+
+# Refresh after pulling new commits
+uv tool upgrade --reinstall gandi-mcp
+
+# Verify
+gandi-mcp --help
 ```
 
 ## Configuration
@@ -58,7 +73,26 @@ Defense-in-depth: every write tool *also* checks the mode at handler time, and e
 
 ## Claude Code integration
 
-Register the server in `~/.claude.json` (global) or `.claude/settings.json` (project):
+Register the server in `~/.claude.json` (global) or `.claude/settings.json` (project).
+
+**With a global install** (`uv tool install`, recommended for global config — no project directory required):
+
+```json
+{
+  "mcpServers": {
+    "gandi": {
+      "command": "gandi-mcp",
+      "env": {
+        "GANDI_TOKEN": "your-bearer-pat-here",
+        "GANDI_MODE": "readonly",
+        "GANDI_ALLOW_PURCHASES": "false"
+      }
+    }
+  }
+}
+```
+
+**From a working copy** (picks up local edits live):
 
 ```json
 {
@@ -71,7 +105,17 @@ Register the server in `~/.claude.json` (global) or `.claude/settings.json` (pro
 }
 ```
 
-Environment variables are read from `.env` in the project directory.
+In the working-copy form, environment variables are read from `.env` in the project directory. In the global-install form, set them under `env` in the JSON or via your shell environment.
+
+Default the global config to `GANDI_MODE=readonly` until you actively need writes — every session inherits the mode you set here.
+
+## Limitations
+
+Gaps in Gandi's v5 REST API that this server cannot work around. Each requires manual action in the Gandi web UI:
+
+- **Registrar transfer-lock toggle.** v5 reports `clientTransferProhibited` in `domain_get_domain` / `domain_get_status` responses but exposes no PATCH/PUT endpoint to set it. Unlock from `Domains → <domain> → Transfer lock` before initiating a registrar transfer-out.
+- **Email subscription cancellation.** `email_refund_slot` only refunds an unused slot within the refund window — there is no v5 endpoint to stop a recurring email subscription. Cancel from `Billing → Subscriptions`.
+- **Outbound transfer status / approval.** v5 does not surface outbound-transfer state. Gandi sends an FOA email; approve there.
 
 ## Development
 

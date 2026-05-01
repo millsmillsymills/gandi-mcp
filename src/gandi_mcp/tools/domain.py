@@ -14,6 +14,23 @@ from gandi_mcp.tools._common import (
 )
 
 
+def _status_view(domain: dict[str, Any], fqdn: str) -> dict[str, Any]:
+    """Slice a ``GET /v5/domain/domains/{fqdn}`` response down to its EPP status.
+
+    Gandi's v5 REST API exposes domain lock state only as part of the full
+    domain object. This helper produces the smaller, branch-friendly shape
+    used by ``domain_get_status``.
+    """
+    status = list(domain.get("status") or [])
+    return {
+        "fqdn": domain.get("fqdn", fqdn),
+        "status": status,
+        "transferLocked": "clientTransferProhibited" in status,
+        "updateLocked": "clientUpdateProhibited" in status,
+        "deleteLocked": "clientDeleteProhibited" in status,
+    }
+
+
 def register_domain_tools(mcp: FastMCP) -> None:
     """Register domain tools on the server."""
 
@@ -49,6 +66,29 @@ def register_domain_tools(mcp: FastMCP) -> None:
         """
         try:
             return await get_client(ctx).get_domain(fqdn)
+        except Exception as e:
+            handle_client_error(e)
+
+    @mcp.tool(tags={"gandi", "domain"})
+    async def domain_get_status(ctx: Context, fqdn: str) -> dict[str, Any]:
+        """EPP status flags for a domain — focused view of the lock state.
+
+        Returns ``{fqdn, status, transferLocked, updateLocked, deleteLocked}``
+        where ``status`` is the raw EPP status array (e.g. ``["clientTransferProhibited"]``)
+        and the booleans are convenience derivations agents can branch on
+        before initiating a transfer-out or contact update.
+
+        Gandi's v5 REST API exposes domain status as **read-only** — there is
+        no PUT/PATCH endpoint to toggle ``clientTransferProhibited``. To unlock
+        a domain for transfer-out, use the Gandi web UI (Domain settings →
+        Transfer lock).
+
+        Args:
+            fqdn: Fully-qualified domain name (e.g. "example.com").
+        """
+        try:
+            domain = await get_client(ctx).get_domain(fqdn)
+            return _status_view(domain, fqdn)
         except Exception as e:
             handle_client_error(e)
 
