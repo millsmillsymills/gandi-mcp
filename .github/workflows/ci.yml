@@ -37,6 +37,7 @@ jobs:
         with:
           enable-cache: true
           python-version: ${{ matrix.python }}
+          cache-suffix: py${{ matrix.python }}
       - run: uv sync --extra dev
       - run: uv run pytest -m "not live" --cov=gandi_mcp --cov-report=xml --cov-report=term
       - if: matrix.python == '3.13'
@@ -54,4 +55,4 @@ jobs:
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
       - run: uv sync --extra dev
       - run: uv run pip-audit
-      - run: pipx run zizmor .github/workflows/
+      - run: pipx run zizmor==1.24.1 .github/workflows/
