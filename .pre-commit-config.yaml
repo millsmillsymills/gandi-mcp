@@ -34,3 +34,11 @@ repos:
         args: ["--config-file=pyproject.toml"]
         pass_filenames: false
         entry: mypy src/gandi_mcp/
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.9.4
+    hooks:
+      - id: bandit
+        args: ["-c", "pyproject.toml", "-r", "src/gandi_mcp/"]
+        additional_dependencies: ["bandit[toml]"]
+        pass_filenames: false
