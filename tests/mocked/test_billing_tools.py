@@ -52,9 +52,7 @@ class TestBillingGetInfo:
 
 @pytest.mark.mocked
 class TestBillingGetInfoForOrg:
-    async def test_passes_sharing_id_in_path(
-        self, ctx: AsyncMock, respx_mock: Any, server: FastMCP
-    ) -> None:
+    async def test_passes_sharing_id_in_path(self, ctx: AsyncMock, respx_mock: Any, server: FastMCP) -> None:
         payload = {"sharing_id": "org-uuid", "prepaid": {"amount": "0", "currency": "USD"}}
         route = respx_mock.get("/v5/billing/info/org-uuid").mock(return_value=httpx.Response(200, json=payload))
 
@@ -64,13 +62,9 @@ class TestBillingGetInfoForOrg:
         assert route.called
         assert result == payload
 
-    async def test_url_encodes_sharing_id(
-        self, ctx: AsyncMock, respx_mock: Any, server: FastMCP
-    ) -> None:
+    async def test_url_encodes_sharing_id(self, ctx: AsyncMock, respx_mock: Any, server: FastMCP) -> None:
         # Sharing IDs are UUIDs in practice but the encoder must handle reserved chars.
-        route = respx_mock.get("/v5/billing/info/org%2Fweird").mock(
-            return_value=httpx.Response(200, json={})
-        )
+        route = respx_mock.get("/v5/billing/info/org%2Fweird").mock(return_value=httpx.Response(200, json={}))
         handler = await _get_handler(server, "billing_get_info_for_org")
         await handler(ctx, sharing_id="org/weird")
         assert route.called
@@ -89,9 +83,7 @@ class TestBillingGetPriceCatalog:
         ).mock(return_value=httpx.Response(200, json=payload))
 
         handler = await _get_handler(server, "billing_get_price_catalog")
-        result = await handler(
-            ctx, product_type="domain", currency="USD", country=None, grid=None
-        )
+        result = await handler(ctx, product_type="domain", currency="USD", country=None, grid=None)
 
         assert route.called
         # Exact query dict — proves None values are filtered out, not serialized.
