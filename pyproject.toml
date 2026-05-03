@@ -54,10 +54,13 @@ dev = [
     "pytest>=9.0.3",
     "pytest-asyncio>=1.3.0",
     "pytest-cov>=7.1.0",
+    "pytest-recording>=0.13.2",
+    "pytest-rerunfailures>=15.0",
     "respx>=0.23.1",
     "ruff>=0.4.0",
     "mypy>=1.20.1",
     "bandit[toml]>=1.9.4",
+    "pip-audit>=2.7.3",
     "pre-commit>=3.7.0",
 ]
 
@@ -173,7 +176,10 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
-    "integration: marks tests that require a live Gandi account (deselect with '-m \"not integration\"')",
+    "mocked: respx-mocked tool tests (T2, runs in CI)",
+    "contract: VCR-replayed real Gandi responses (T3, runs in CI)",
+    "live: requires GANDI_TOKEN + teamrocket.network (T4, LOCAL ONLY)",
+    "smoke: minimal live-read release gate (subset of live)",
     "slow: marks tests that are slow to run",
 ]
 addopts = [
