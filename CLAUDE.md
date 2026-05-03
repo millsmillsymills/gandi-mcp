@@ -28,7 +28,7 @@ uv run pytest tests/unit/test_server.py::TestReadOnlyGate -v
 uv run pytest tests/unit/test_config.py::TestPurchaseGate::test_purchases_enabled_when_both_set -v
 
 # Test with coverage
-uv run pytest tests/unit/ --cov=gandi_mcp --cov-report=term-missing -m "not integration"
+uv run pytest tests/unit/ --cov=gandi_mcp --cov-report=term-missing -m "not live"
 
 # Security scan
 uv run bandit -r src/gandi_mcp/ -c pyproject.toml
