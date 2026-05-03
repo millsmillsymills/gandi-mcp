@@ -176,8 +176,8 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
-    "mocked: respx-mocked tool tests (T2, runs in CI)",
-    "contract: VCR-replayed real Gandi responses (T3, runs in CI)",
+    "mocked: respx-mocked tool tests (T2, intended for CI)",
+    "contract: VCR-replayed real Gandi responses (T3, intended for CI)",
     "live: requires GANDI_TOKEN + teamrocket.network (T4, LOCAL ONLY)",
     "smoke: minimal live-read release gate (subset of live)",
     "slow: marks tests that are slow to run",
