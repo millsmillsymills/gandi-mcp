@@ -129,6 +129,8 @@ ignore = [
     "TC001",   # application imports needed at runtime for FastMCP annotation introspection
     "TC002",   # third-party imports needed at runtime for FastMCP annotation introspection
 ]
+# Build-time asset-generation scripts — print is the right tool for CLI status output
+"docs/assets/_*.py" = ["T201"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["gandi_mcp"]
