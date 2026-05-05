@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/logo.png" alt="gandi-mcp logo" width="160" height="160">
+</p>
+
 # gandi-mcp
 
 Production-grade Python MCP server for the [Gandi v5 API](https://api.gandi.net/docs/reference/).
