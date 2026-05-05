@@ -1236,7 +1236,7 @@ This is a one-time `email_create_slot` purchase (~$3/mo). Do it via Gandi web UI
 
 - [ ] **Step 3: Decide a forward-target email address**
 
-Use a real working inbox you control (e.g. `andyandymillsmills@gmail.com`). It becomes `GANDI_MCP_TEST_FORWARD_TARGET`.
+Use a real working inbox you control (any address you can read mail at). It becomes `GANDI_MCP_TEST_FORWARD_TARGET`.
 
 - [ ] **Step 4: Generate a dedicated PAT for live testing**
 
