@@ -14,10 +14,8 @@ from gandi_mcp.tools._common import (
 )
 
 
-def register_email_tools(mcp: FastMCP) -> None:
-    """Register email tools on the server."""
-
-    # ── Read ────────────────────────────────────────────────────────────
+def register_email_read_tools(mcp: FastMCP) -> None:
+    """Register read-only email tools on the server."""
 
     @mcp.tool(tags={"gandi", "email"})
     async def gandi_email_list_mailboxes(
@@ -115,7 +113,9 @@ def register_email_tools(mcp: FastMCP) -> None:
         except Exception as e:
             handle_client_error(e)
 
-    # ── Write (non-purchasing) ──────────────────────────────────────────
+
+def register_email_write_tools(mcp: FastMCP) -> None:
+    """Register non-purchasing write email tools on the server."""
 
     @mcp.tool(
         tags={"gandi", "email", "write"},
@@ -293,7 +293,11 @@ def register_email_tools(mcp: FastMCP) -> None:
         except Exception as e:
             handle_client_error(e)
 
-    # ── Purchasing (DOUBLE-GATED) ───────────────────────────────────────
+
+def register_email_purchase_tools(mcp: FastMCP) -> None:
+    """Register money-spending email tools on the server.
+
+    DOUBLE-GATED: requires GANDI_MODE=readwrite AND GANDI_ALLOW_PURCHASES=true."""
 
     @mcp.tool(
         tags={"gandi", "email", "write", "purchase"},
@@ -393,3 +397,16 @@ def register_email_tools(mcp: FastMCP) -> None:
             return await get_client(ctx).email_renew_mailbox(domain, email, {"duration": duration})
         except Exception as e:
             handle_client_error(e)
+
+
+def register_email_tools(mcp: FastMCP) -> None:
+    """Register every email tool (read + write + purchase).
+
+    Visibility tiers are gated separately at the server level via
+    ``mcp.disable(tags={...})``; this function unconditionally registers
+    every tier. Tests that want only one tier should call the granular
+    ``register_email_<tier>_tools`` helpers directly.
+    """
+    register_email_read_tools(mcp)
+    register_email_write_tools(mcp)
+    register_email_purchase_tools(mcp)

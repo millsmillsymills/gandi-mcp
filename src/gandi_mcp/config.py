@@ -56,6 +56,17 @@ class GandiConfig(BaseSettings):
         return self.gandi_mode == GandiMode.READWRITE
 
     @property
+    def writes_enabled(self) -> bool:
+        """Alias of ``is_readwrite``.
+
+        Named to match the canonical PROTO-006 vocabulary (``writes_enabled``
+        as the env-flag write-gate signal). Used by ``server.py`` to choose
+        between ``register_read_tools`` and the full ``register_all_tools``
+        path so the audit and the runtime see one consistent property.
+        """
+        return self.is_readwrite
+
+    @property
     def purchases_enabled(self) -> bool:
         """Purchases require BOTH readwrite mode AND an explicit opt-in."""
         return self.is_readwrite and self.gandi_allow_purchases

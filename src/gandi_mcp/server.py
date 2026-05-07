@@ -138,7 +138,7 @@ def create_server(config: GandiConfig | None = None) -> FastMCP:
 
     # ── Safety gates (defense-in-depth #1: tool visibility) ──────────────
     # Hide the entire write surface in readonly mode.
-    if not config.is_readwrite:
+    if not config.writes_enabled:
         server.disable(tags={"write"})
         logger.info("Read-only mode: write tools disabled")
 

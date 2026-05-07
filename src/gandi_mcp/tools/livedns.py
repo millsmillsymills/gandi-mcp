@@ -10,10 +10,8 @@ from gandi_mcp.errors import handle_client_error
 from gandi_mcp.tools._common import assert_readwrite, get_client
 
 
-def register_livedns_tools(mcp: FastMCP) -> None:
-    """Register LiveDNS tools on the server."""
-
-    # ── Read ────────────────────────────────────────────────────────────
+def register_livedns_read_tools(mcp: FastMCP) -> None:
+    """Register read-only livedns tools on the server."""
 
     @mcp.tool(tags={"gandi", "livedns"})
     async def gandi_livedns_list_domains(ctx: Context) -> list[dict[str, Any]]:
@@ -116,7 +114,9 @@ def register_livedns_tools(mcp: FastMCP) -> None:
         except Exception as e:
             handle_client_error(e)
 
-    # ── Write (non-purchasing) ──────────────────────────────────────────
+
+def register_livedns_write_tools(mcp: FastMCP) -> None:
+    """Register non-purchasing write livedns tools on the server."""
 
     @mcp.tool(
         tags={"gandi", "livedns", "write"},
@@ -348,3 +348,15 @@ def register_livedns_tools(mcp: FastMCP) -> None:
             return await get_client(ctx).livedns_delete_key(fqdn, key_id)
         except Exception as e:
             handle_client_error(e)
+
+
+def register_livedns_tools(mcp: FastMCP) -> None:
+    """Register every livedns tool (read + write).
+
+    Visibility tiers are gated separately at the server level via
+    ``mcp.disable(tags={...})``; this function unconditionally registers
+    every tier. Tests that want only one tier should call the granular
+    ``register_livedns_<tier>_tools`` helpers directly.
+    """
+    register_livedns_read_tools(mcp)
+    register_livedns_write_tools(mcp)

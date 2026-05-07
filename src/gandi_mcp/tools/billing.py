@@ -10,8 +10,8 @@ from gandi_mcp.errors import handle_client_error
 from gandi_mcp.tools._common import get_client
 
 
-def register_billing_tools(mcp: FastMCP) -> None:
-    """Register billing tools on the server."""
+def register_billing_read_tools(mcp: FastMCP) -> None:
+    """Register read-only billing tools on the server."""
 
     @mcp.tool(tags={"gandi", "billing"})
     async def gandi_billing_get_info(ctx: Context) -> dict[str, Any]:
@@ -72,3 +72,8 @@ def register_billing_tools(mcp: FastMCP) -> None:
             return await get_client(ctx).get_price_catalog(product_type, currency=currency, country=country, grid=grid)
         except Exception as e:
             handle_client_error(e)
+
+
+def register_billing_tools(mcp: FastMCP) -> None:
+    """Register every billing tool (read-only — billing has no writes)."""
+    register_billing_read_tools(mcp)
