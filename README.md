@@ -16,7 +16,7 @@ Production-grade Python MCP server for the [Gandi v5 API](https://api.gandi.net/
 - **Three-tier safety model** — readonly (default) → readwrite → readwrite + purchases, gated at both tool-visibility and handler-runtime layers
 - **No-purchasing mode** — tools that spend money (domain registration, renewal, transfer-in, cert issuance, mailbox slots) are hidden by default even in readwrite mode
 - **Bearer auth** with optional `sharing_id` scoping for reseller / multi-org accounts
-- **Typed, linted, tested** — strict mypy, ruff, pytest, bandit
+- **Typed, linted, tested** — strict ty, ruff, pytest, bandit
 
 ## Quick Start
 
@@ -129,7 +129,7 @@ uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
 
 # Type check
-uv run mypy src/gandi_mcp/
+uv run ty check src/gandi_mcp/
 
 # Unit tests
 uv run pytest tests/unit/ -v

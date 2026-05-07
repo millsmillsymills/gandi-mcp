@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 def get_server_context(ctx: Context) -> ServerContext:
     """Return the typed lifespan context for a tool call."""
-    return ctx.lifespan_context  # type: ignore[return-value]
+    return ctx.lifespan_context  # ty: ignore[invalid-return-type]
 
 
 def get_client(ctx: Context) -> GandiClient:

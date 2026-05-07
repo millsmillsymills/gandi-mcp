@@ -17,7 +17,7 @@ uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
 
 # Type check
-uv run mypy src/gandi_mcp/
+uv run ty check src/gandi_mcp/
 
 # Test (unit only)
 uv run pytest tests/unit/ -v
@@ -64,7 +64,7 @@ src/gandi_mcp/
 
 ## Conventions
 
-- **Python >=3.11**, strict mypy, ruff for lint+format
+- **Python >=3.13**, strict ty, ruff for lint+format
 - **Line length**: 120 characters
 - **Tool naming**: `{area}_{verb}_{entity}` (e.g. `domain_list_domains`, `livedns_create_record`, `cert_revoke`). Exception: `org_*` for organization tools.
 - **Tags**: every tool carries `{"gandi", "<area>"}`. Write tools add `"write"`. Purchase tools add both `"write"` AND `"purchase"`.
@@ -166,3 +166,14 @@ Properties enforced across files. A regression that quietly breaks any of these 
 - **Empty response body is an error unless 204.** `BaseGandiClient._parse_json` only returns `{}` for 204; any other status with no content raises `GandiError` rather than silently pretending the API returned an empty object.
 - **`authenticated` checks non-empty token.** `GandiConfig.authenticated` requires both `gandi_token is not None` AND a non-empty secret value; an empty-string `GANDI_TOKEN=` fails closed with the clean "not configured" branch, not a 401 from the API.
 - **`GANDI_MAX_RETRIES >= 1`** — the field is "total attempts including the first" (1 = no retry). `0` would make `tenacity.stop_after_attempt(0)` stop before the first attempt, breaking every request.
+
+## Canonical MCP standards
+
+Authoritative source: `~/Desktop/Projects/consistency-check/docs/standards/`. This repo is graded against `mcp.md` + the language-specific file (`python.md` for Python repos, `go.md` for Go) + `mcp-protocol.md`.
+
+Run the audit:
+
+```bash
+cd ~/Desktop/Projects/consistency-check
+uv run consistency-check audit --repo $(basename "$PWD")
+```
