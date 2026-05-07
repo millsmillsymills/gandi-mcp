@@ -63,7 +63,7 @@ def _build_lifespan(config: GandiConfig):  # type: ignore[no-untyped-def]
         if server is not None:
             server.disable(tags={"gandi"})
 
-    @lifespan  # type: ignore[arg-type]
+    @lifespan  # ty: ignore[invalid-argument-type]
     async def server_lifespan(server: FastMCP) -> AsyncIterator[ServerContext]:
         """Build the Gandi client, validate the PAT, and yield the context.
 

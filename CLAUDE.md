@@ -17,7 +17,7 @@ uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
 
 # Type check
-uv run mypy src/gandi_mcp/
+uv run ty check src/gandi_mcp/
 
 # Test (unit only)
 uv run pytest tests/unit/ -v
@@ -64,7 +64,7 @@ src/gandi_mcp/
 
 ## Conventions
 
-- **Python >=3.11**, strict mypy, ruff for lint+format
+- **Python >=3.13**, strict ty, ruff for lint+format
 - **Line length**: 120 characters
 - **Tool naming**: `{area}_{verb}_{entity}` (e.g. `domain_list_domains`, `livedns_create_record`, `cert_revoke`). Exception: `org_*` for organization tools.
 - **Tags**: every tool carries `{"gandi", "<area>"}`. Write tools add `"write"`. Purchase tools add both `"write"` AND `"purchase"`.
