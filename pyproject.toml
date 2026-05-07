@@ -55,6 +55,7 @@ dev = [
     "pytest-recording>=0.13.2",
     "pytest-rerunfailures>=15.0",
     "respx>=0.23.1",
+    "hypothesis>=6.152.4",
     "ruff>=0.15.12",
     "ty>=0.0.34",
     "bandit[toml]>=1.9.4",
