@@ -72,6 +72,15 @@ Issues = "https://github.com/millsmillsymills/gandi-mcp/issues"
 Changelog = "https://github.com/millsmillsymills/gandi-mcp/releases"
 
 # =============================================================================
+# uv — constrain transitive deps (CVE patches)
+# =============================================================================
+[tool.uv]
+# python-multipart < 0.0.27 has CVE-2026-42561 (DoS via multipart parser).
+# fastmcp 3.2.x pins it transitively; lift the floor here so pip-audit is
+# clean without a direct runtime dependency on it.
+constraint-dependencies = ["python-multipart>=0.0.27"]
+
+# =============================================================================
 # Ruff — linting and formatting
 # =============================================================================
 [tool.ruff]

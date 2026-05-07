@@ -20,7 +20,7 @@ jobs:
       - run: uv sync --extra dev
       - run: uv run ruff check src/ tests/
       - run: uv run ruff format --check src/ tests/
-      - run: uv run mypy src/gandi_mcp/
+      - run: uv run ty check src/gandi_mcp/
       - run: uv run bandit -r src/gandi_mcp/ -c pyproject.toml
 
   test:
