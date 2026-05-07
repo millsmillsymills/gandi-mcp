@@ -93,14 +93,14 @@ class TestTagInvariants:
     # money requires adding its name here — any mismatch with the {"write",
     # "purchase"} tag set fails the test.
     EXPECTED_PURCHASE_TOOLS: ClassVar[set[str]] = {
-        "domain_register",
-        "domain_renew",
-        "domain_transfer_in",
-        "email_create_mailbox",
-        "email_create_slot",
-        "email_renew_mailbox",
-        "cert_issue",
-        "cert_renew",
+        "gandi_domain_register",
+        "gandi_domain_renew",
+        "gandi_domain_transfer_in",
+        "gandi_email_create_mailbox",
+        "gandi_email_create_slot",
+        "gandi_email_renew_mailbox",
+        "gandi_cert_issue",
+        "gandi_cert_renew",
     }
 
     async def test_expected_purchase_tools_carry_purchase_tag(self) -> None:

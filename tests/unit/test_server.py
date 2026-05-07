@@ -27,21 +27,21 @@ class TestReadOnlyGate:
         tool_names = {t.name for t in await server.list_tools()}
 
         # Purchase tools must be hidden
-        assert "domain_register" not in tool_names
-        assert "domain_renew" not in tool_names
-        assert "email_create_mailbox" not in tool_names
-        assert "cert_issue" not in tool_names
+        assert "gandi_domain_register" not in tool_names
+        assert "gandi_domain_renew" not in tool_names
+        assert "gandi_email_create_mailbox" not in tool_names
+        assert "gandi_cert_issue" not in tool_names
 
         # Regular write tools must also be hidden
-        assert "livedns_create_record" not in tool_names
-        assert "livedns_delete_record" not in tool_names
-        assert "domain_set_nameservers" not in tool_names
+        assert "gandi_livedns_create_record" not in tool_names
+        assert "gandi_livedns_delete_record" not in tool_names
+        assert "gandi_domain_set_nameservers" not in tool_names
 
         # Read tools must remain visible
-        assert "org_get_user_info" in tool_names
-        assert "domain_list_domains" in tool_names
-        assert "livedns_list_records" in tool_names
-        assert "billing_get_info" in tool_names
+        assert "gandi_org_get_user_info" in tool_names
+        assert "gandi_domain_list_domains" in tool_names
+        assert "gandi_livedns_list_records" in tool_names
+        assert "gandi_billing_get_info" in tool_names
 
 
 class TestReadWriteGate:
@@ -50,15 +50,15 @@ class TestReadWriteGate:
         tool_names = {t.name for t in await server.list_tools()}
 
         # Non-purchase writes visible
-        assert "livedns_create_record" in tool_names
-        assert "domain_set_nameservers" in tool_names
-        assert "email_update_mailbox" in tool_names
+        assert "gandi_livedns_create_record" in tool_names
+        assert "gandi_domain_set_nameservers" in tool_names
+        assert "gandi_email_update_mailbox" in tool_names
 
         # Purchase tools still hidden (requires GANDI_ALLOW_PURCHASES=true)
-        assert "domain_register" not in tool_names
-        assert "domain_renew" not in tool_names
-        assert "email_create_mailbox" not in tool_names
-        assert "cert_issue" not in tool_names
+        assert "gandi_domain_register" not in tool_names
+        assert "gandi_domain_renew" not in tool_names
+        assert "gandi_email_create_mailbox" not in tool_names
+        assert "gandi_cert_issue" not in tool_names
 
 
 class TestFullAccess:
@@ -66,18 +66,18 @@ class TestFullAccess:
         server = create_server(_config(gandi_mode=GandiMode.READWRITE, gandi_allow_purchases=True))
         tool_names = {t.name for t in await server.list_tools()}
 
-        assert "domain_register" in tool_names
-        assert "domain_renew" in tool_names
-        assert "email_create_mailbox" in tool_names
-        assert "cert_issue" in tool_names
+        assert "gandi_domain_register" in tool_names
+        assert "gandi_domain_renew" in tool_names
+        assert "gandi_email_create_mailbox" in tool_names
+        assert "gandi_cert_issue" in tool_names
 
     async def test_purchases_flag_alone_does_not_unlock(self):
         # Opt-in flag but still readonly — purchases must stay hidden.
         server = create_server(_config(gandi_mode=GandiMode.READONLY, gandi_allow_purchases=True))
         tool_names = {t.name for t in await server.list_tools()}
 
-        assert "domain_register" not in tool_names
-        assert "cert_issue" not in tool_names
+        assert "gandi_domain_register" not in tool_names
+        assert "gandi_cert_issue" not in tool_names
 
 
 class TestDestructiveHints:
@@ -86,15 +86,15 @@ class TestDestructiveHints:
     # Tools whose underlying API call removes state. MCP clients may branch
     # on destructiveHint to show a confirmation prompt before invoking.
     DESTRUCTIVE_TOOLS: ClassVar[set[str]] = {
-        "domain_delete",
-        "domain_delete_glue_record",
-        "domain_delete_dnssec_key",
-        "livedns_delete_record",
-        "email_delete_mailbox",
-        "email_delete_forward",
-        "email_purge_mailbox",
-        "email_refund_slot",
-        "cert_revoke",
+        "gandi_domain_delete",
+        "gandi_domain_delete_glue_record",
+        "gandi_domain_delete_dnssec_key",
+        "gandi_livedns_delete_record",
+        "gandi_email_delete_mailbox",
+        "gandi_email_delete_forward",
+        "gandi_email_purge_mailbox",
+        "gandi_email_refund_slot",
+        "gandi_cert_revoke",
     }
 
     async def test_destructive_tools_have_destructive_hint(self):

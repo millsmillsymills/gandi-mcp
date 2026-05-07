@@ -44,7 +44,7 @@ class TestCertList:
         payload = [{"id": "cert-uuid", "cn": "example.com", "status": "valid"}]
         route = respx_mock.get("/v5/certificate/issued-certs").mock(return_value=httpx.Response(200, json=payload))
 
-        handler = await _get_handler(server, "cert_list")
+        handler = await _get_handler(server, "gandi_cert_list")
         result = await handler(ctx)
 
         assert route.called
@@ -58,7 +58,7 @@ class TestCertList:
             return_value=httpx.Response(200, json=[]),
         )
 
-        handler = await _get_handler(server, "cert_list")
+        handler = await _get_handler(server, "gandi_cert_list")
         await handler(ctx, status=None)
 
         assert route.called
@@ -69,7 +69,7 @@ class TestCertList:
             return_value=httpx.Response(200, json=[]),
         )
 
-        handler = await _get_handler(server, "cert_list")
+        handler = await _get_handler(server, "gandi_cert_list")
         await handler(ctx, status="valid")
 
         assert route.called
@@ -89,7 +89,7 @@ class TestCertGet:
             return_value=httpx.Response(200, json=payload)
         )
 
-        handler = await _get_handler(server, "cert_get")
+        handler = await _get_handler(server, "gandi_cert_get")
         result = await handler(ctx, cert_id="cert-uuid")
 
         assert route.called
@@ -100,7 +100,7 @@ class TestCertGet:
             return_value=httpx.Response(200, json={})
         )
 
-        handler = await _get_handler(server, "cert_get")
+        handler = await _get_handler(server, "gandi_cert_get")
         await handler(ctx, cert_id="cert/weird")
 
         assert route.called
@@ -117,7 +117,7 @@ class TestCertRevoke:
             return_value=httpx.Response(200, json=payload)
         )
 
-        handler = await _get_handler(server, "cert_revoke")
+        handler = await _get_handler(server, "gandi_cert_revoke")
         result = await handler(ctx, cert_id="cert-uuid")
 
         assert route.called
@@ -129,7 +129,7 @@ class TestCertRevoke:
             return_value=httpx.Response(200, json={})
         )
 
-        handler = await _get_handler(server, "cert_revoke")
+        handler = await _get_handler(server, "gandi_cert_revoke")
         await handler(ctx, cert_id="cert/weird")
 
         assert route.called
@@ -151,7 +151,7 @@ class TestCertIssue:
             return_value=httpx.Response(202, json=payload)
         )
 
-        handler = await _get_handler(server, "cert_issue")
+        handler = await _get_handler(server, "gandi_cert_issue")
         result = await handler(ctx, data=body)
 
         assert route.called
@@ -175,7 +175,7 @@ class TestCertRenew:
             return_value=httpx.Response(202, json=payload)
         )
 
-        handler = await _get_handler(server, "cert_renew")
+        handler = await _get_handler(server, "gandi_cert_renew")
         result = await handler(ctx, cert_id="cert-uuid", data=body)
 
         assert route.called
@@ -190,7 +190,7 @@ class TestCertRenew:
             return_value=httpx.Response(202, json={})
         )
 
-        handler = await _get_handler(server, "cert_renew")
+        handler = await _get_handler(server, "gandi_cert_renew")
         await handler(ctx, cert_id="cert/weird", data=body)
 
         assert route.called

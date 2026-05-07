@@ -46,7 +46,7 @@ class TestLivednsListDomains:
         payload = [{"fqdn": "example.com", "automatic_snapshots": True}]
         route = respx_mock.get("/v5/livedns/domains").mock(return_value=httpx.Response(200, json=payload))
 
-        handler = await _get_handler(server, "livedns_list_domains")
+        handler = await _get_handler(server, "gandi_livedns_list_domains")
         result = await handler(ctx)
 
         assert route.called
@@ -61,7 +61,7 @@ class TestLivednsGetDomain:
         payload = {"fqdn": "example.com", "automatic_snapshots": True}
         route = respx_mock.get("/v5/livedns/domains/example.com").mock(return_value=httpx.Response(200, json=payload))
 
-        handler = await _get_handler(server, "livedns_get_domain")
+        handler = await _get_handler(server, "gandi_livedns_get_domain")
         result = await handler(ctx, fqdn="example.com")
 
         assert route.called
@@ -70,7 +70,7 @@ class TestLivednsGetDomain:
     async def test_url_encodes_fqdn(self, ctx: AsyncMock, respx_mock: Any, server: FastMCP) -> None:
         route = respx_mock.get("/v5/livedns/domains/has%2Fslash.com").mock(return_value=httpx.Response(200, json={}))
 
-        handler = await _get_handler(server, "livedns_get_domain")
+        handler = await _get_handler(server, "gandi_livedns_get_domain")
         await handler(ctx, fqdn="has/slash.com")
 
         assert route.called
@@ -87,7 +87,7 @@ class TestLivednsListNameservers:
             return_value=httpx.Response(200, json=payload)
         )
 
-        handler = await _get_handler(server, "livedns_list_nameservers")
+        handler = await _get_handler(server, "gandi_livedns_list_nameservers")
         result = await handler(ctx, fqdn="example.com")
 
         assert route.called
@@ -98,7 +98,7 @@ class TestLivednsListNameservers:
             return_value=httpx.Response(200, json=[])
         )
 
-        handler = await _get_handler(server, "livedns_list_nameservers")
+        handler = await _get_handler(server, "gandi_livedns_list_nameservers")
         await handler(ctx, fqdn="has/slash.com")
 
         assert route.called
@@ -113,7 +113,7 @@ class TestLivednsListRrtypes:
         payload = ["A", "AAAA", "CNAME", "MX", "TXT"]
         route = respx_mock.get("/v5/livedns/dns/rrtypes").mock(return_value=httpx.Response(200, json=payload))
 
-        handler = await _get_handler(server, "livedns_list_rrtypes")
+        handler = await _get_handler(server, "gandi_livedns_list_rrtypes")
         result = await handler(ctx)
 
         assert route.called
@@ -128,7 +128,7 @@ class TestLivednsListRecords:
             return_value=httpx.Response(200, json=payload)
         )
 
-        handler = await _get_handler(server, "livedns_list_records")
+        handler = await _get_handler(server, "gandi_livedns_list_records")
         result = await handler(ctx, fqdn="example.com", name=None, rrset_type=None)
 
         assert route.called
@@ -142,7 +142,7 @@ class TestLivednsListRecords:
             return_value=httpx.Response(200, json=[])
         )
 
-        handler = await _get_handler(server, "livedns_list_records")
+        handler = await _get_handler(server, "gandi_livedns_list_records")
         await handler(ctx, fqdn="example.com", name="www", rrset_type=None)
 
         assert route.called
@@ -153,7 +153,7 @@ class TestLivednsListRecords:
             return_value=httpx.Response(200, json=[])
         )
 
-        handler = await _get_handler(server, "livedns_list_records")
+        handler = await _get_handler(server, "gandi_livedns_list_records")
         await handler(ctx, fqdn="example.com", name="www", rrset_type="A")
 
         assert route.called
@@ -164,7 +164,7 @@ class TestLivednsListRecords:
             return_value=httpx.Response(200, json=[])
         )
 
-        handler = await _get_handler(server, "livedns_list_records")
+        handler = await _get_handler(server, "gandi_livedns_list_records")
         await handler(ctx, fqdn="example.com", name="rec/with/slash", rrset_type=None)
 
         assert route.called
@@ -181,7 +181,7 @@ class TestLivednsListDnssecKeys:
             return_value=httpx.Response(200, json=payload)
         )
 
-        handler = await _get_handler(server, "livedns_list_dnssec_keys")
+        handler = await _get_handler(server, "gandi_livedns_list_dnssec_keys")
         result = await handler(ctx, fqdn="example.com")
 
         assert route.called
@@ -192,7 +192,7 @@ class TestLivednsListDnssecKeys:
             return_value=httpx.Response(200, json=[])
         )
 
-        handler = await _get_handler(server, "livedns_list_dnssec_keys")
+        handler = await _get_handler(server, "gandi_livedns_list_dnssec_keys")
         await handler(ctx, fqdn="has/slash.com")
 
         assert route.called
@@ -208,7 +208,7 @@ class TestLivednsAddDomain:
         payload = {"message": "DNS Zone Created"}
         route = respx_mock.post("/v5/livedns/domains").mock(return_value=httpx.Response(201, json=payload))
 
-        handler = await _get_handler(server, "livedns_add_domain")
+        handler = await _get_handler(server, "gandi_livedns_add_domain")
         result = await handler(ctx, fqdn="example.com")
 
         assert route.called
@@ -226,7 +226,7 @@ class TestLivednsUpdateDomain:
         payload = {"message": "Updated"}
         route = respx_mock.patch("/v5/livedns/domains/example.com").mock(return_value=httpx.Response(200, json=payload))
 
-        handler = await _get_handler(server, "livedns_update_domain")
+        handler = await _get_handler(server, "gandi_livedns_update_domain")
         result = await handler(ctx, fqdn="example.com", automatic_snapshots=True)
 
         assert route.called
@@ -238,7 +238,7 @@ class TestLivednsUpdateDomain:
     async def test_omits_automatic_snapshots_when_none(self, ctx: AsyncMock, respx_mock: Any, server: FastMCP) -> None:
         route = respx_mock.patch("/v5/livedns/domains/example.com").mock(return_value=httpx.Response(200, json={}))
 
-        handler = await _get_handler(server, "livedns_update_domain")
+        handler = await _get_handler(server, "gandi_livedns_update_domain")
         await handler(ctx, fqdn="example.com", automatic_snapshots=None)
 
         assert route.called
@@ -248,7 +248,7 @@ class TestLivednsUpdateDomain:
     async def test_url_encodes_fqdn(self, ctx: AsyncMock, respx_mock: Any, server: FastMCP) -> None:
         route = respx_mock.patch("/v5/livedns/domains/has%2Fslash.com").mock(return_value=httpx.Response(200, json={}))
 
-        handler = await _get_handler(server, "livedns_update_domain")
+        handler = await _get_handler(server, "gandi_livedns_update_domain")
         await handler(ctx, fqdn="has/slash.com", automatic_snapshots=False)
 
         assert route.called
@@ -263,7 +263,7 @@ class TestLivednsCreateRecord:
             return_value=httpx.Response(201, json=payload)
         )
 
-        handler = await _get_handler(server, "livedns_create_record")
+        handler = await _get_handler(server, "gandi_livedns_create_record")
         result = await handler(
             ctx,
             fqdn="example.com",
@@ -289,7 +289,7 @@ class TestLivednsCreateRecord:
             return_value=httpx.Response(201, json={})
         )
 
-        handler = await _get_handler(server, "livedns_create_record")
+        handler = await _get_handler(server, "gandi_livedns_create_record")
         await handler(
             ctx,
             fqdn="example.com",
@@ -319,7 +319,7 @@ class TestLivednsReplaceRecord:
             return_value=httpx.Response(201, json=payload)
         )
 
-        handler = await _get_handler(server, "livedns_replace_record")
+        handler = await _get_handler(server, "gandi_livedns_replace_record")
         result = await handler(
             ctx,
             fqdn="example.com",
@@ -340,7 +340,7 @@ class TestLivednsReplaceRecord:
             return_value=httpx.Response(201, json={})
         )
 
-        handler = await _get_handler(server, "livedns_replace_record")
+        handler = await _get_handler(server, "gandi_livedns_replace_record")
         await handler(
             ctx,
             fqdn="example.com",
@@ -359,7 +359,7 @@ class TestLivednsReplaceRecord:
             return_value=httpx.Response(201, json={})
         )
 
-        handler = await _get_handler(server, "livedns_replace_record")
+        handler = await _get_handler(server, "gandi_livedns_replace_record")
         await handler(
             ctx,
             fqdn="example.com",
@@ -387,7 +387,7 @@ class TestLivednsReplaceZone:
             return_value=httpx.Response(201, json=payload)
         )
 
-        handler = await _get_handler(server, "livedns_replace_zone")
+        handler = await _get_handler(server, "gandi_livedns_replace_zone")
         result = await handler(ctx, fqdn="example.com", items=items)
 
         assert route.called
@@ -404,7 +404,7 @@ class TestLivednsDeleteRecord:
             return_value=httpx.Response(204)
         )
 
-        handler = await _get_handler(server, "livedns_delete_record")
+        handler = await _get_handler(server, "gandi_livedns_delete_record")
         result = await handler(ctx, fqdn="example.com", name="www", rrset_type="A")
 
         assert route.called
@@ -417,7 +417,7 @@ class TestLivednsDeleteRecord:
             return_value=httpx.Response(204)
         )
 
-        handler = await _get_handler(server, "livedns_delete_record")
+        handler = await _get_handler(server, "gandi_livedns_delete_record")
         await handler(ctx, fqdn="example.com", name="rec/with/slash", rrset_type="weird/type")
 
         assert route.called
@@ -435,7 +435,7 @@ class TestLivednsDeleteAllRecords:
     ) -> None:
         route = respx_mock.delete("/v5/livedns/domains/example.com/records").mock(return_value=httpx.Response(204))
 
-        handler = await _get_handler(server, "livedns_delete_all_records")
+        handler = await _get_handler(server, "gandi_livedns_delete_all_records")
         result = await handler(ctx, fqdn="example.com")
 
         assert route.called
@@ -454,7 +454,7 @@ class TestLivednsCreateDnssecKey:
             return_value=httpx.Response(201, json=payload)
         )
 
-        handler = await _get_handler(server, "livedns_create_dnssec_key")
+        handler = await _get_handler(server, "gandi_livedns_create_dnssec_key")
         result = await handler(ctx, fqdn="example.com")
 
         assert route.called
@@ -466,7 +466,7 @@ class TestLivednsCreateDnssecKey:
     async def test_posts_zsk_flags_when_set(self, ctx: AsyncMock, respx_mock: Any, server: FastMCP) -> None:
         route = respx_mock.post("/v5/livedns/domains/example.com/keys").mock(return_value=httpx.Response(201, json={}))
 
-        handler = await _get_handler(server, "livedns_create_dnssec_key")
+        handler = await _get_handler(server, "gandi_livedns_create_dnssec_key")
         await handler(ctx, fqdn="example.com", flags=256)
 
         assert route.called
@@ -481,7 +481,7 @@ class TestLivednsDeleteDnssecKey:
             return_value=httpx.Response(204)
         )
 
-        handler = await _get_handler(server, "livedns_delete_dnssec_key")
+        handler = await _get_handler(server, "gandi_livedns_delete_dnssec_key")
         result = await handler(ctx, fqdn="example.com", key_id="key-uuid")
 
         assert route.called
@@ -493,7 +493,7 @@ class TestLivednsDeleteDnssecKey:
             return_value=httpx.Response(204)
         )
 
-        handler = await _get_handler(server, "livedns_delete_dnssec_key")
+        handler = await _get_handler(server, "gandi_livedns_delete_dnssec_key")
         await handler(ctx, fqdn="example.com", key_id="key/weird")
 
         assert route.called

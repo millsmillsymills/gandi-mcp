@@ -19,7 +19,7 @@ def _status_view(domain: dict[str, Any], fqdn: str) -> dict[str, Any]:
 
     Gandi's v5 REST API exposes domain lock state only as part of the full
     domain object. This helper produces the smaller, branch-friendly shape
-    used by ``domain_get_status``.
+    used by ``gandi_domain_get_status``.
     """
     status = list(domain.get("status") or [])
     return {
@@ -37,7 +37,7 @@ def register_domain_tools(mcp: FastMCP) -> None:
     # ── Read ────────────────────────────────────────────────────────────
 
     @mcp.tool(tags={"gandi", "domain"})
-    async def domain_list_domains(
+    async def gandi_domain_list_domains(
         ctx: Context,
         fqdn_filter: str | None = None,
         tld: str | None = None,
@@ -51,6 +51,10 @@ def register_domain_tools(mcp: FastMCP) -> None:
             tld: Filter by TLD (e.g. "com").
             per_page: Page size (default 100, max 1000).
             page: Page number (1-based).
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             return await get_client(ctx).list_domains(fqdn=fqdn_filter, tld=tld, per_page=per_page, page=page)
@@ -58,11 +62,15 @@ def register_domain_tools(mcp: FastMCP) -> None:
             handle_client_error(e)
 
     @mcp.tool(tags={"gandi", "domain"})
-    async def domain_get_domain(ctx: Context, fqdn: str) -> dict[str, Any]:
+    async def gandi_domain_get_domain(ctx: Context, fqdn: str) -> dict[str, Any]:
         """Retrieve full details for a domain (contacts, nameservers, status, dates).
 
         Args:
             fqdn: Fully-qualified domain name (e.g. "example.com").
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             return await get_client(ctx).get_domain(fqdn)
@@ -70,7 +78,7 @@ def register_domain_tools(mcp: FastMCP) -> None:
             handle_client_error(e)
 
     @mcp.tool(tags={"gandi", "domain"})
-    async def domain_get_status(ctx: Context, fqdn: str) -> dict[str, Any]:
+    async def gandi_domain_get_status(ctx: Context, fqdn: str) -> dict[str, Any]:
         """EPP status flags for a domain — focused view of the lock state.
 
         Returns ``{fqdn, status, transferLocked, updateLocked, deleteLocked}``
@@ -85,6 +93,10 @@ def register_domain_tools(mcp: FastMCP) -> None:
 
         Args:
             fqdn: Fully-qualified domain name (e.g. "example.com").
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             domain = await get_client(ctx).get_domain(fqdn)
@@ -93,7 +105,7 @@ def register_domain_tools(mcp: FastMCP) -> None:
             handle_client_error(e)
 
     @mcp.tool(tags={"gandi", "domain"})
-    async def domain_check_availability(
+    async def gandi_domain_check_availability(
         ctx: Context,
         name: str,
         processes: list[str] | None = None,
@@ -115,6 +127,10 @@ def register_domain_tools(mcp: FastMCP) -> None:
             country: ISO country code — affects tax-inclusive pricing.
             max_duration: Maximum registration duration in years.
             period: Registration period ("create", "transfer", "renew").
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             return await get_client(ctx).check_availability(
@@ -130,11 +146,15 @@ def register_domain_tools(mcp: FastMCP) -> None:
             handle_client_error(e)
 
     @mcp.tool(tags={"gandi", "domain"})
-    async def domain_get_claims(ctx: Context, fqdn: str) -> dict[str, Any]:
+    async def gandi_domain_get_claims(ctx: Context, fqdn: str) -> dict[str, Any]:
         """Trademark claims (TMCH) for a candidate registration.
 
         Args:
             fqdn: Candidate domain to check for trademark conflicts.
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             return await get_client(ctx).get_domain_claims(fqdn)
@@ -142,11 +162,15 @@ def register_domain_tools(mcp: FastMCP) -> None:
             handle_client_error(e)
 
     @mcp.tool(tags={"gandi", "domain"})
-    async def domain_get_contacts(ctx: Context, fqdn: str) -> dict[str, Any]:
+    async def gandi_domain_get_contacts(ctx: Context, fqdn: str) -> dict[str, Any]:
         """Current contact block (admin/tech/bill/owner) for a domain.
 
         Args:
             fqdn: Fully-qualified domain name.
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             return await get_client(ctx).get_domain_contacts(fqdn)
@@ -154,11 +178,15 @@ def register_domain_tools(mcp: FastMCP) -> None:
             handle_client_error(e)
 
     @mcp.tool(tags={"gandi", "domain"})
-    async def domain_get_nameservers(ctx: Context, fqdn: str) -> list[str]:
+    async def gandi_domain_get_nameservers(ctx: Context, fqdn: str) -> list[str]:
         """Configured nameservers for a domain.
 
         Args:
             fqdn: Fully-qualified domain name.
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             return await get_client(ctx).get_nameservers(fqdn)
@@ -166,11 +194,15 @@ def register_domain_tools(mcp: FastMCP) -> None:
             handle_client_error(e)
 
     @mcp.tool(tags={"gandi", "domain"})
-    async def domain_list_glue_records(ctx: Context, fqdn: str) -> list[dict[str, Any]]:
+    async def gandi_domain_list_glue_records(ctx: Context, fqdn: str) -> list[dict[str, Any]]:
         """List glue records (in-bailiwick host records) for a domain.
 
         Args:
             fqdn: Fully-qualified domain name.
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             return await get_client(ctx).list_glue_records(fqdn)
@@ -178,12 +210,16 @@ def register_domain_tools(mcp: FastMCP) -> None:
             handle_client_error(e)
 
     @mcp.tool(tags={"gandi", "domain"})
-    async def domain_get_glue_record(ctx: Context, fqdn: str, name: str) -> dict[str, Any]:
+    async def gandi_domain_get_glue_record(ctx: Context, fqdn: str, name: str) -> dict[str, Any]:
         """Get a specific glue record by hostname label.
 
         Args:
             fqdn: Parent domain.
             name: Short label of the glue host (e.g. "ns1").
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             return await get_client(ctx).get_glue_record(fqdn, name)
@@ -191,11 +227,15 @@ def register_domain_tools(mcp: FastMCP) -> None:
             handle_client_error(e)
 
     @mcp.tool(tags={"gandi", "domain"})
-    async def domain_list_dnssec_keys(ctx: Context, fqdn: str) -> list[dict[str, Any]]:
+    async def gandi_domain_list_dnssec_keys(ctx: Context, fqdn: str) -> list[dict[str, Any]]:
         """List DS records registered at the registry for DNSSEC.
 
         Args:
             fqdn: Fully-qualified domain name.
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             return await get_client(ctx).list_dnssec_keys(fqdn)
@@ -203,11 +243,15 @@ def register_domain_tools(mcp: FastMCP) -> None:
             handle_client_error(e)
 
     @mcp.tool(tags={"gandi", "domain"})
-    async def domain_get_renew_info(ctx: Context, fqdn: str) -> dict[str, Any]:
+    async def gandi_domain_get_renew_info(ctx: Context, fqdn: str) -> dict[str, Any]:
         """Price and eligibility preview for a domain renewal (no charge).
 
         Args:
             fqdn: Fully-qualified domain name.
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             return await get_client(ctx).get_renew_info(fqdn)
@@ -215,11 +259,15 @@ def register_domain_tools(mcp: FastMCP) -> None:
             handle_client_error(e)
 
     @mcp.tool(tags={"gandi", "domain"})
-    async def domain_get_transferin_info(ctx: Context, fqdn: str) -> dict[str, Any]:
+    async def gandi_domain_get_transferin_info(ctx: Context, fqdn: str) -> dict[str, Any]:
         """Check transfer-in availability and price preview (no charge).
 
         Args:
             fqdn: Fully-qualified domain name.
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             return await get_client(ctx).get_transferin_info(fqdn)
@@ -227,11 +275,15 @@ def register_domain_tools(mcp: FastMCP) -> None:
             handle_client_error(e)
 
     @mcp.tool(tags={"gandi", "domain"})
-    async def domain_get_ownership_change_status(ctx: Context, fqdn: str) -> dict[str, Any]:
+    async def gandi_domain_get_ownership_change_status(ctx: Context, fqdn: str) -> dict[str, Any]:
         """Status of a pending ownership change.
 
         Args:
             fqdn: Fully-qualified domain name.
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             return await get_client(ctx).get_ownership_change_status(fqdn)
@@ -244,7 +296,7 @@ def register_domain_tools(mcp: FastMCP) -> None:
         tags={"gandi", "domain", "write"},
         annotations={"readOnlyHint": False, "destructiveHint": False},
     )
-    async def domain_set_autorenew(
+    async def gandi_domain_set_autorenew(
         ctx: Context,
         fqdn: str,
         enabled: bool,
@@ -256,8 +308,12 @@ def register_domain_tools(mcp: FastMCP) -> None:
             fqdn: Fully-qualified domain name.
             enabled: True to enable autorenew, False to disable.
             duration: Renewal duration in years — TLD-specific; use
-                `domain_get_renew_info` to preview valid durations. Required
+                `gandi_domain_get_renew_info` to preview valid durations. Required
                 when enabling.
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             assert_readwrite(ctx, "update autorenew")
@@ -272,7 +328,7 @@ def register_domain_tools(mcp: FastMCP) -> None:
         tags={"gandi", "domain", "write"},
         annotations={"readOnlyHint": False, "destructiveHint": False},
     )
-    async def domain_update_contacts(
+    async def gandi_domain_update_contacts(
         ctx: Context,
         fqdn: str,
         admin: dict[str, Any] | None = None,
@@ -286,6 +342,10 @@ def register_domain_tools(mcp: FastMCP) -> None:
             admin: Admin contact block — full contact object per Gandi schema.
             tech: Tech contact block.
             bill: Billing contact block.
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             assert_readwrite(ctx, "update contacts")
@@ -304,7 +364,7 @@ def register_domain_tools(mcp: FastMCP) -> None:
         tags={"gandi", "domain", "write"},
         annotations={"readOnlyHint": False, "destructiveHint": False},
     )
-    async def domain_set_nameservers(
+    async def gandi_domain_set_nameservers(
         ctx: Context,
         fqdn: str,
         nameservers: list[str],
@@ -314,6 +374,10 @@ def register_domain_tools(mcp: FastMCP) -> None:
         Args:
             fqdn: Fully-qualified domain name.
             nameservers: Full list of nameservers (replaces any existing set).
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             assert_readwrite(ctx, "update nameservers")
@@ -325,7 +389,7 @@ def register_domain_tools(mcp: FastMCP) -> None:
         tags={"gandi", "domain", "write"},
         annotations={"readOnlyHint": False, "destructiveHint": False},
     )
-    async def domain_create_glue_record(
+    async def gandi_domain_create_glue_record(
         ctx: Context,
         fqdn: str,
         name: str,
@@ -337,6 +401,10 @@ def register_domain_tools(mcp: FastMCP) -> None:
             fqdn: Parent domain (must be owned by this account).
             name: Short label for the glue host (e.g. "ns1").
             ips: List of IPs (IPv4 and/or IPv6) the glue host resolves to.
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             assert_readwrite(ctx, "create glue record")
@@ -348,7 +416,7 @@ def register_domain_tools(mcp: FastMCP) -> None:
         tags={"gandi", "domain", "write"},
         annotations={"readOnlyHint": False, "destructiveHint": False},
     )
-    async def domain_update_glue_record(
+    async def gandi_domain_update_glue_record(
         ctx: Context,
         fqdn: str,
         name: str,
@@ -360,6 +428,10 @@ def register_domain_tools(mcp: FastMCP) -> None:
             fqdn: Parent domain.
             name: Short label of the glue host.
             ips: New list of IPs (replaces any existing entries).
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             assert_readwrite(ctx, "update glue record")
@@ -371,12 +443,16 @@ def register_domain_tools(mcp: FastMCP) -> None:
         tags={"gandi", "domain", "write"},
         annotations={"readOnlyHint": False, "destructiveHint": True},
     )
-    async def domain_delete_glue_record(ctx: Context, fqdn: str, name: str) -> dict[str, Any]:
+    async def gandi_domain_delete_glue_record(ctx: Context, fqdn: str, name: str) -> dict[str, Any]:
         """Delete a glue record.
 
         Args:
             fqdn: Parent domain.
             name: Short label of the glue host.
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             assert_readwrite(ctx, "delete glue record")
@@ -388,7 +464,7 @@ def register_domain_tools(mcp: FastMCP) -> None:
         tags={"gandi", "domain", "write"},
         annotations={"readOnlyHint": False, "destructiveHint": False},
     )
-    async def domain_create_dnssec_key(
+    async def gandi_domain_create_dnssec_key(
         ctx: Context,
         fqdn: str,
         algorithm: int,
@@ -404,6 +480,10 @@ def register_domain_tools(mcp: FastMCP) -> None:
             digest_type: IANA codepoint — commonly 1=SHA1, 2=SHA256, 4=SHA384.
             digest: Hex-encoded digest.
             keytag: Key tag (16-bit identifier).
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             assert_readwrite(ctx, "register DS record")
@@ -418,12 +498,16 @@ def register_domain_tools(mcp: FastMCP) -> None:
         tags={"gandi", "domain", "write"},
         annotations={"readOnlyHint": False, "destructiveHint": True},
     )
-    async def domain_delete_dnssec_key(ctx: Context, fqdn: str, key_id: str) -> dict[str, Any]:
+    async def gandi_domain_delete_dnssec_key(ctx: Context, fqdn: str, key_id: str) -> dict[str, Any]:
         """Remove a DS record from the registry.
 
         Args:
             fqdn: Fully-qualified domain name.
             key_id: ID of the DS record to delete.
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             assert_readwrite(ctx, "delete DS record")
@@ -435,11 +519,15 @@ def register_domain_tools(mcp: FastMCP) -> None:
         tags={"gandi", "domain", "write"},
         annotations={"readOnlyHint": False, "destructiveHint": False},
     )
-    async def domain_reset_authinfo(ctx: Context, fqdn: str) -> dict[str, Any]:
+    async def gandi_domain_reset_authinfo(ctx: Context, fqdn: str) -> dict[str, Any]:
         """Regenerate the transfer authorization code.
 
         Args:
             fqdn: Fully-qualified domain name.
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             assert_readwrite(ctx, "reset authinfo")
@@ -451,7 +539,7 @@ def register_domain_tools(mcp: FastMCP) -> None:
         tags={"gandi", "domain", "write"},
         annotations={"readOnlyHint": False, "destructiveHint": False},
     )
-    async def domain_initiate_ownership_change(
+    async def gandi_domain_initiate_ownership_change(
         ctx: Context,
         fqdn: str,
         owner: dict[str, Any],
@@ -463,6 +551,10 @@ def register_domain_tools(mcp: FastMCP) -> None:
             fqdn: Fully-qualified domain name.
             owner: New owner contact block per Gandi schema.
             notify_former_owner: Email the prior owner about the change.
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             assert_readwrite(ctx, "initiate ownership change")
@@ -477,11 +569,15 @@ def register_domain_tools(mcp: FastMCP) -> None:
         tags={"gandi", "domain", "write"},
         annotations={"readOnlyHint": False, "destructiveHint": False},
     )
-    async def domain_resend_foa(ctx: Context, fqdn: str) -> dict[str, Any]:
+    async def gandi_domain_resend_foa(ctx: Context, fqdn: str) -> dict[str, Any]:
         """Resend the Form-of-Authorization email for a pending ownership change.
 
         Args:
             fqdn: Fully-qualified domain name.
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             assert_readwrite(ctx, "resend FOA")
@@ -495,7 +591,7 @@ def register_domain_tools(mcp: FastMCP) -> None:
         tags={"gandi", "domain", "write", "purchase"},
         annotations={"readOnlyHint": False, "destructiveHint": False, "openWorldHint": True},
     )
-    async def domain_register(ctx: Context, data: dict[str, Any]) -> dict[str, Any]:
+    async def gandi_domain_register(ctx: Context, data: dict[str, Any]) -> dict[str, Any]:
         """Register a new domain (SPENDS MONEY).
 
         Requires GANDI_MODE=readwrite AND GANDI_ALLOW_PURCHASES=true.
@@ -505,6 +601,10 @@ def register_domain_tools(mcp: FastMCP) -> None:
                 schema — must include ``fqdn``, ``duration``, ``owner``, and
                 typically ``admin``/``tech``/``bill`` contacts plus optional
                 ``nameservers``, ``tld_period``, ``extra_parameters``.
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             assert_readwrite(ctx, "register domain")
@@ -517,7 +617,7 @@ def register_domain_tools(mcp: FastMCP) -> None:
         tags={"gandi", "domain", "write", "purchase"},
         annotations={"readOnlyHint": False, "destructiveHint": False, "openWorldHint": True},
     )
-    async def domain_renew(
+    async def gandi_domain_renew(
         ctx: Context,
         fqdn: str,
         duration: int = 1,
@@ -530,8 +630,12 @@ def register_domain_tools(mcp: FastMCP) -> None:
         Args:
             fqdn: Fully-qualified domain name.
             duration: Renewal duration in years — TLD-specific; use
-                `domain_get_renew_info` to preview valid durations.
+                `gandi_domain_get_renew_info` to preview valid durations.
             currency: ISO currency code (defaults to org default).
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             assert_readwrite(ctx, "renew domain")
@@ -547,7 +651,7 @@ def register_domain_tools(mcp: FastMCP) -> None:
         tags={"gandi", "domain", "write", "purchase"},
         annotations={"readOnlyHint": False, "destructiveHint": False, "openWorldHint": True},
     )
-    async def domain_transfer_in(ctx: Context, fqdn: str, data: dict[str, Any]) -> dict[str, Any]:
+    async def gandi_domain_transfer_in(ctx: Context, fqdn: str, data: dict[str, Any]) -> dict[str, Any]:
         """Initiate a domain transfer-in from another registrar (SPENDS MONEY).
 
         Requires GANDI_MODE=readwrite AND GANDI_ALLOW_PURCHASES=true.
@@ -556,6 +660,10 @@ def register_domain_tools(mcp: FastMCP) -> None:
             fqdn: Fully-qualified domain name.
             data: Transfer payload (``authinfo``, ``duration``, ``owner``,
                 optional contacts and nameservers).
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             assert_readwrite(ctx, "transfer domain")
@@ -568,11 +676,15 @@ def register_domain_tools(mcp: FastMCP) -> None:
         tags={"gandi", "domain", "write"},
         annotations={"readOnlyHint": False, "destructiveHint": True},
     )
-    async def domain_delete(ctx: Context, fqdn: str) -> dict[str, Any]:
+    async def gandi_domain_delete(ctx: Context, fqdn: str) -> dict[str, Any]:
         """Delete a domain (restricted — typically only works on test TLDs).
 
         Args:
             fqdn: Fully-qualified domain name.
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             assert_readwrite(ctx, "delete domain")

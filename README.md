@@ -71,7 +71,7 @@ Three tiers, two orthogonal gates:
 |---|---|---|
 | `readonly` (default) | n/a | Read tools only |
 | `readwrite` | `false` (default) | Read + non-purchasing writes (DNS records, contacts, mailbox edits, cert revoke, …) |
-| `readwrite` | `true` | Everything including `domain_register`, `domain_renew`, `domain_transfer_in`, `email_create_mailbox`, `email_create_slot`, `email_renew_mailbox`, `cert_issue`, `cert_renew` |
+| `readwrite` | `true` | Everything including `gandi_domain_register`, `gandi_domain_renew`, `gandi_domain_transfer_in`, `gandi_email_create_mailbox`, `gandi_email_create_slot`, `gandi_email_renew_mailbox`, `gandi_cert_issue`, `gandi_cert_renew` |
 
 Defense-in-depth: every write tool *also* checks the mode at handler time, and every purchase tool *also* checks the purchase flag, so a stale tool list cached by an MCP client can't slip a write through.
 
@@ -117,8 +117,8 @@ Default the global config to `GANDI_MODE=readonly` until you actively need write
 
 Gaps in Gandi's v5 REST API that this server cannot work around. Each requires manual action in the Gandi web UI:
 
-- **Registrar transfer-lock toggle.** v5 reports `clientTransferProhibited` in `domain_get_domain` / `domain_get_status` responses but exposes no PATCH/PUT endpoint to set it. Unlock from `Domains → <domain> → Transfer lock` before initiating a registrar transfer-out.
-- **Email subscription cancellation.** `email_refund_slot` only refunds an unused slot within the refund window — there is no v5 endpoint to stop a recurring email subscription. Cancel from `Billing → Subscriptions`.
+- **Registrar transfer-lock toggle.** v5 reports `clientTransferProhibited` in `gandi_domain_get_domain` / `gandi_domain_get_status` responses but exposes no PATCH/PUT endpoint to set it. Unlock from `Domains → <domain> → Transfer lock` before initiating a registrar transfer-out.
+- **Email subscription cancellation.** `gandi_email_refund_slot` only refunds an unused slot within the refund window — there is no v5 endpoint to stop a recurring email subscription. Cancel from `Billing → Subscriptions`.
 - **Outbound transfer status / approval.** v5 does not surface outbound-transfer state. Gandi sends an FOA email; approve there.
 
 ## Development

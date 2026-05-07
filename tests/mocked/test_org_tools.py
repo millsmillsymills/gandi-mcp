@@ -43,7 +43,7 @@ class TestOrgGetUserInfo:
         payload = {"id": "user-uuid", "username": "alice", "email": "alice@example.com", "lang": "en"}
         route = respx_mock.get("/v5/organization/user-info").mock(return_value=httpx.Response(200, json=payload))
 
-        handler = await _get_handler(server, "org_get_user_info")
+        handler = await _get_handler(server, "gandi_org_get_user_info")
         result = await handler(ctx)
 
         assert route.called
@@ -58,7 +58,7 @@ class TestOrgListOrganizations:
         payload = [{"id": "org-uuid", "name": "acme", "type": "company"}]
         route = respx_mock.get("/v5/organization/organizations").mock(return_value=httpx.Response(200, json=payload))
 
-        handler = await _get_handler(server, "org_list_organizations")
+        handler = await _get_handler(server, "gandi_org_list_organizations")
         result = await handler(ctx)
 
         assert route.called
@@ -73,7 +73,7 @@ class TestOrgListOrganizations:
             return_value=httpx.Response(200, json=[]),
         )
 
-        handler = await _get_handler(server, "org_list_organizations")
+        handler = await _get_handler(server, "gandi_org_list_organizations")
         await handler(ctx, name="acme", permission=None, org_type=None)
 
         assert route.called
@@ -85,7 +85,7 @@ class TestOrgListOrganizations:
             return_value=httpx.Response(200, json=[]),
         )
 
-        handler = await _get_handler(server, "org_list_organizations")
+        handler = await _get_handler(server, "gandi_org_list_organizations")
         await handler(ctx, org_type="company")
 
         assert route.called
@@ -104,7 +104,7 @@ class TestOrgGetOrganization:
             return_value=httpx.Response(200, json=payload)
         )
 
-        handler = await _get_handler(server, "org_get_organization")
+        handler = await _get_handler(server, "gandi_org_get_organization")
         result = await handler(ctx, org_id="org-uuid")
 
         assert route.called
@@ -115,7 +115,7 @@ class TestOrgGetOrganization:
             return_value=httpx.Response(200, json={})
         )
 
-        handler = await _get_handler(server, "org_get_organization")
+        handler = await _get_handler(server, "gandi_org_get_organization")
         await handler(ctx, org_id="o/weird")
 
         assert route.called
@@ -133,7 +133,7 @@ class TestOrgListCustomers:
             params={"per_page": "100", "page": "1"},
         ).mock(return_value=httpx.Response(200, json=payload))
 
-        handler = await _get_handler(server, "org_list_customers")
+        handler = await _get_handler(server, "gandi_org_list_customers")
         result = await handler(ctx, org_id="org-uuid")
 
         assert route.called
@@ -144,7 +144,7 @@ class TestOrgListCustomers:
             return_value=httpx.Response(200, json=[])
         )
 
-        handler = await _get_handler(server, "org_list_customers")
+        handler = await _get_handler(server, "gandi_org_list_customers")
         await handler(ctx, org_id="o/weird")
 
         assert route.called
@@ -161,7 +161,7 @@ class TestOrgGetCustomer:
             return_value=httpx.Response(200, json=payload)
         )
 
-        handler = await _get_handler(server, "org_get_customer")
+        handler = await _get_handler(server, "gandi_org_get_customer")
         result = await handler(ctx, org_id="org-uuid", customer_id="cust-uuid")
 
         assert route.called
@@ -172,7 +172,7 @@ class TestOrgGetCustomer:
             return_value=httpx.Response(200, json={})
         )
 
-        handler = await _get_handler(server, "org_get_customer")
+        handler = await _get_handler(server, "gandi_org_get_customer")
         await handler(ctx, org_id="o/weird", customer_id="c/odd")
 
         assert route.called
