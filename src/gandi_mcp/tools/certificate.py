@@ -14,10 +14,8 @@ from gandi_mcp.tools._common import (
 )
 
 
-def register_certificate_tools(mcp: FastMCP) -> None:
-    """Register certificate tools on the server."""
-
-    # ── Read ────────────────────────────────────────────────────────────
+def register_certificate_read_tools(mcp: FastMCP) -> None:
+    """Register read-only certificate tools on the server."""
 
     @mcp.tool(tags={"gandi", "certificate"})
     async def gandi_cert_list(
@@ -59,7 +57,9 @@ def register_certificate_tools(mcp: FastMCP) -> None:
         except Exception as e:
             handle_client_error(e)
 
-    # ── Write (non-purchasing) ──────────────────────────────────────────
+
+def register_certificate_write_tools(mcp: FastMCP) -> None:
+    """Register non-purchasing write certificate tools on the server."""
 
     @mcp.tool(
         tags={"gandi", "certificate", "write"},
@@ -81,7 +81,12 @@ def register_certificate_tools(mcp: FastMCP) -> None:
         except Exception as e:
             handle_client_error(e)
 
-    # ── Purchasing (DOUBLE-GATED) ───────────────────────────────────────
+
+def register_certificate_purchase_tools(mcp: FastMCP) -> None:
+    """Register money-spending certificate tools on the server.
+
+    DOUBLE-GATED: requires GANDI_MODE=readwrite AND GANDI_ALLOW_PURCHASES=true.
+    """
 
     @mcp.tool(
         tags={"gandi", "certificate", "write", "purchase"},
@@ -131,3 +136,16 @@ def register_certificate_tools(mcp: FastMCP) -> None:
             return await get_client(ctx).cert_renew(cert_id, data)
         except Exception as e:
             handle_client_error(e)
+
+
+def register_certificate_tools(mcp: FastMCP) -> None:
+    """Register every certificate tool (read + write + purchase).
+
+    Read/write/purchase visibility is gated separately at the server level via
+    ``mcp.disable(tags={...})``; this function unconditionally registers all
+    three tiers. Tests that want only one tier should call the granular
+    ``register_certificate_<tier>_tools`` helpers directly.
+    """
+    register_certificate_read_tools(mcp)
+    register_certificate_write_tools(mcp)
+    register_certificate_purchase_tools(mcp)

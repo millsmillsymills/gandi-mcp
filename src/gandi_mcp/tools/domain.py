@@ -31,10 +31,8 @@ def _status_view(domain: dict[str, Any], fqdn: str) -> dict[str, Any]:
     }
 
 
-def register_domain_tools(mcp: FastMCP) -> None:
-    """Register domain tools on the server."""
-
-    # ── Read ────────────────────────────────────────────────────────────
+def register_domain_read_tools(mcp: FastMCP) -> None:
+    """Register read-only domain tools on the server."""
 
     @mcp.tool(tags={"gandi", "domain"})
     async def gandi_domain_list_domains(
@@ -290,7 +288,9 @@ def register_domain_tools(mcp: FastMCP) -> None:
         except Exception as e:
             handle_client_error(e)
 
-    # ── Write (non-purchasing) ──────────────────────────────────────────
+
+def register_domain_write_tools(mcp: FastMCP) -> None:
+    """Register non-purchasing write domain tools on the server."""
 
     @mcp.tool(
         tags={"gandi", "domain", "write"},
@@ -585,7 +585,11 @@ def register_domain_tools(mcp: FastMCP) -> None:
         except Exception as e:
             handle_client_error(e)
 
-    # ── Purchasing (DOUBLE-GATED) ───────────────────────────────────────
+
+def register_domain_purchase_tools(mcp: FastMCP) -> None:
+    """Register money-spending domain tools on the server.
+
+    DOUBLE-GATED: requires GANDI_MODE=readwrite AND GANDI_ALLOW_PURCHASES=true."""
 
     @mcp.tool(
         tags={"gandi", "domain", "write", "purchase"},
@@ -691,3 +695,16 @@ def register_domain_tools(mcp: FastMCP) -> None:
             return await get_client(ctx).delete_domain(fqdn)
         except Exception as e:
             handle_client_error(e)
+
+
+def register_domain_tools(mcp: FastMCP) -> None:
+    """Register every domain tool (read + write + purchase).
+
+    Visibility tiers are gated separately at the server level via
+    ``mcp.disable(tags={...})``; this function unconditionally registers
+    every tier. Tests that want only one tier should call the granular
+    ``register_domain_<tier>_tools`` helpers directly.
+    """
+    register_domain_read_tools(mcp)
+    register_domain_write_tools(mcp)
+    register_domain_purchase_tools(mcp)

@@ -10,8 +10,8 @@ from gandi_mcp.errors import handle_client_error
 from gandi_mcp.tools._common import get_client
 
 
-def register_organization_tools(mcp: FastMCP) -> None:
-    """Register organization tools on the server."""
+def register_organization_read_tools(mcp: FastMCP) -> None:
+    """Register read-only organization tools on the server."""
 
     @mcp.tool(tags={"gandi", "organization"})
     async def gandi_org_get_user_info(ctx: Context) -> dict[str, Any]:
@@ -113,3 +113,8 @@ def register_organization_tools(mcp: FastMCP) -> None:
             return await get_client(ctx).get_customer(org_id, customer_id)
         except Exception as e:
             handle_client_error(e)
+
+
+def register_organization_tools(mcp: FastMCP) -> None:
+    """Register every organization tool (read-only — organization has no writes)."""
+    register_organization_read_tools(mcp)
