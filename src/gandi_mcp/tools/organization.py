@@ -39,6 +39,8 @@ def register_organization_read_tools(mcp: FastMCP) -> None:
     ) -> list[dict[str, Any]]:
         """List organizations the token can access.
 
+        Returns: Gandi organization list — see `https://api.gandi.net/docs`.
+
         Args:
             name: Filter on organization name (substring match).
             permission: Filter by granted permission ("view", "admin", "billing").
@@ -46,10 +48,6 @@ def register_organization_read_tools(mcp: FastMCP) -> None:
                 "publicbody").
             per_page: Page size.
             page: Page number.
-
-
-        Returns:
-            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             return await get_client(ctx).list_organizations(

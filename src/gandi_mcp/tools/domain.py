@@ -79,22 +79,20 @@ def register_domain_read_tools(mcp: FastMCP) -> None:
     async def gandi_domain_get_status(ctx: Context, fqdn: str) -> dict[str, Any]:
         """EPP status flags for a domain — focused view of the lock state.
 
-        Returns ``{fqdn, status, transferLocked, updateLocked, deleteLocked}``
-        where ``status`` is the raw EPP status array (e.g. ``["clientTransferProhibited"]``)
-        and the booleans are convenience derivations agents can branch on
-        before initiating a transfer-out or contact update.
+        Args:
+            fqdn: Fully-qualified domain name (e.g. "example.com").
+
+        Returns:
+            ``{fqdn, status, transferLocked, updateLocked, deleteLocked}``
+            where ``status`` is the raw EPP status array (e.g.
+            ``["clientTransferProhibited"]``) and the booleans are
+            convenience derivations agents can branch on before a transfer-out
+            or contact update.
 
         Gandi's v5 REST API exposes domain status as **read-only** — there is
         no PUT/PATCH endpoint to toggle ``clientTransferProhibited``. To unlock
         a domain for transfer-out, use the Gandi web UI (Domain settings →
         Transfer lock).
-
-        Args:
-            fqdn: Fully-qualified domain name (e.g. "example.com").
-
-
-        Returns:
-            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             domain = await get_client(ctx).get_domain(fqdn)
@@ -115,6 +113,8 @@ def register_domain_read_tools(mcp: FastMCP) -> None:
     ) -> dict[str, Any]:
         """Check domain availability and pricing at the registry.
 
+        Returns: Gandi availability/price payload — see `https://api.gandi.net/docs`.
+
         Args:
             name: Domain name to check (with or without TLD — if no TLD, use
                 ``extension`` to broaden the search).
@@ -125,10 +125,6 @@ def register_domain_read_tools(mcp: FastMCP) -> None:
             country: ISO country code — affects tax-inclusive pricing.
             max_duration: Maximum registration duration in years.
             period: Registration period ("create", "transfer", "renew").
-
-
-        Returns:
-            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             return await get_client(ctx).check_availability(
