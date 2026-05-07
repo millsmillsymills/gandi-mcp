@@ -14,19 +14,30 @@ def register_billing_tools(mcp: FastMCP) -> None:
     """Register billing tools on the server."""
 
     @mcp.tool(tags={"gandi", "billing"})
-    async def billing_get_info(ctx: Context) -> dict[str, Any]:
-        """Billing summary for the token owner (prepaid balance, annual spend, tier)."""
+    async def gandi_billing_get_info(ctx: Context) -> dict[str, Any]:
+        """Billing summary for the token owner (prepaid balance, annual spend, tier).
+
+        Args:
+            ctx: FastMCP request context.
+
+        Returns:
+            Gandi API response payload.
+        """
         try:
             return await get_client(ctx).get_billing_info()
         except Exception as e:
             handle_client_error(e)
 
     @mcp.tool(tags={"gandi", "billing"})
-    async def billing_get_info_for_org(ctx: Context, sharing_id: str) -> dict[str, Any]:
+    async def gandi_billing_get_info_for_org(ctx: Context, sharing_id: str) -> dict[str, Any]:
         """Billing summary for a specific organization.
 
         Args:
             sharing_id: Organization UUID.
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             return await get_client(ctx).get_billing_info_for_org(sharing_id)
@@ -34,7 +45,7 @@ def register_billing_tools(mcp: FastMCP) -> None:
             handle_client_error(e)
 
     @mcp.tool(tags={"gandi", "billing"})
-    async def billing_get_price_catalog(
+    async def gandi_billing_get_price_catalog(
         ctx: Context,
         product_type: str,
         currency: str | None = None,
@@ -52,6 +63,10 @@ def register_billing_tools(mcp: FastMCP) -> None:
             currency: ISO currency code ("USD", "EUR").
             country: ISO country code — affects tax-inclusive prices.
             grid: Pricing grid level ("A", "B", "C", "D", "E").
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             return await get_client(ctx).get_price_catalog(product_type, currency=currency, country=country, grid=grid)

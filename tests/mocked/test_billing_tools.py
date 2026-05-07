@@ -43,7 +43,7 @@ class TestBillingGetInfo:
         payload = {"prepaid": {"amount": "100.00", "currency": "USD"}, "annual_business_costs": "0"}
         route = respx_mock.get("/v5/billing/info").mock(return_value=httpx.Response(200, json=payload))
 
-        handler = await _get_handler(server, "billing_get_info")
+        handler = await _get_handler(server, "gandi_billing_get_info")
         result = await handler(ctx)
 
         assert route.called
@@ -56,7 +56,7 @@ class TestBillingGetInfoForOrg:
         payload = {"sharing_id": "org-uuid", "prepaid": {"amount": "0", "currency": "USD"}}
         route = respx_mock.get("/v5/billing/info/org-uuid").mock(return_value=httpx.Response(200, json=payload))
 
-        handler = await _get_handler(server, "billing_get_info_for_org")
+        handler = await _get_handler(server, "gandi_billing_get_info_for_org")
         result = await handler(ctx, sharing_id="org-uuid")
 
         assert route.called
@@ -65,7 +65,7 @@ class TestBillingGetInfoForOrg:
     async def test_url_encodes_sharing_id(self, ctx: AsyncMock, respx_mock: Any, server: FastMCP) -> None:
         # Sharing IDs are UUIDs in practice but the encoder must handle reserved chars.
         route = respx_mock.get("/v5/billing/info/org%2Fweird").mock(return_value=httpx.Response(200, json={}))
-        handler = await _get_handler(server, "billing_get_info_for_org")
+        handler = await _get_handler(server, "gandi_billing_get_info_for_org")
         await handler(ctx, sharing_id="org/weird")
         assert route.called
         assert route.calls.last.request.url.raw_path == b"/v5/billing/info/org%2Fweird"
@@ -82,7 +82,7 @@ class TestBillingGetPriceCatalog:
             params={"currency": "USD"},
         ).mock(return_value=httpx.Response(200, json=payload))
 
-        handler = await _get_handler(server, "billing_get_price_catalog")
+        handler = await _get_handler(server, "gandi_billing_get_price_catalog")
         result = await handler(ctx, product_type="domain", currency="USD", country=None, grid=None)
 
         assert route.called

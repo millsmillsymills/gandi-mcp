@@ -14,15 +14,22 @@ def register_organization_tools(mcp: FastMCP) -> None:
     """Register organization tools on the server."""
 
     @mcp.tool(tags={"gandi", "organization"})
-    async def org_get_user_info(ctx: Context) -> dict[str, Any]:
-        """Profile info for the token owner (name, email, lang, scope)."""
+    async def gandi_org_get_user_info(ctx: Context) -> dict[str, Any]:
+        """Profile info for the token owner (name, email, lang, scope).
+
+        Args:
+            ctx: FastMCP request context.
+
+        Returns:
+            Gandi API response payload.
+        """
         try:
             return await get_client(ctx).get_user_info()
         except Exception as e:
             handle_client_error(e)
 
     @mcp.tool(tags={"gandi", "organization"})
-    async def org_list_organizations(
+    async def gandi_org_list_organizations(
         ctx: Context,
         name: str | None = None,
         permission: str | None = None,
@@ -39,6 +46,10 @@ def register_organization_tools(mcp: FastMCP) -> None:
                 "publicbody").
             per_page: Page size.
             page: Page number.
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             return await get_client(ctx).list_organizations(
@@ -48,11 +59,15 @@ def register_organization_tools(mcp: FastMCP) -> None:
             handle_client_error(e)
 
     @mcp.tool(tags={"gandi", "organization"})
-    async def org_get_organization(ctx: Context, org_id: str) -> dict[str, Any]:
+    async def gandi_org_get_organization(ctx: Context, org_id: str) -> dict[str, Any]:
         """Retrieve one organization by UUID.
 
         Args:
             org_id: Organization UUID (aka sharing_id).
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             return await get_client(ctx).get_organization(org_id)
@@ -60,7 +75,7 @@ def register_organization_tools(mcp: FastMCP) -> None:
             handle_client_error(e)
 
     @mcp.tool(tags={"gandi", "organization"})
-    async def org_list_customers(
+    async def gandi_org_list_customers(
         ctx: Context,
         org_id: str,
         per_page: int = 100,
@@ -72,6 +87,10 @@ def register_organization_tools(mcp: FastMCP) -> None:
             org_id: Reseller organization UUID.
             per_page: Page size.
             page: Page number.
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             return await get_client(ctx).list_customers(org_id, per_page=per_page, page=page)
@@ -79,12 +98,16 @@ def register_organization_tools(mcp: FastMCP) -> None:
             handle_client_error(e)
 
     @mcp.tool(tags={"gandi", "organization"})
-    async def org_get_customer(ctx: Context, org_id: str, customer_id: str) -> dict[str, Any]:
+    async def gandi_org_get_customer(ctx: Context, org_id: str, customer_id: str) -> dict[str, Any]:
         """Retrieve a specific customer of a reseller org.
 
         Args:
             org_id: Reseller organization UUID.
             customer_id: Customer UUID.
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             return await get_client(ctx).get_customer(org_id, customer_id)

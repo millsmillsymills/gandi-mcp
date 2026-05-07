@@ -46,7 +46,7 @@ class TestEmailListMailboxes:
         payload = [{"id": "mb-uuid", "address": "info@example.com"}]
         route = respx_mock.get("/v5/email/mailboxes/example.com").mock(return_value=httpx.Response(200, json=payload))
 
-        handler = await _get_handler(server, "email_list_mailboxes")
+        handler = await _get_handler(server, "gandi_email_list_mailboxes")
         result = await handler(ctx, domain="example.com")
 
         assert route.called
@@ -57,7 +57,7 @@ class TestEmailListMailboxes:
     async def test_url_encodes_domain(self, ctx: AsyncMock, respx_mock: Any, server: FastMCP) -> None:
         route = respx_mock.get("/v5/email/mailboxes/weird%2Fdom.com").mock(return_value=httpx.Response(200, json=[]))
 
-        handler = await _get_handler(server, "email_list_mailboxes")
+        handler = await _get_handler(server, "gandi_email_list_mailboxes")
         await handler(ctx, domain="weird/dom.com")
 
         assert route.called
@@ -74,7 +74,7 @@ class TestEmailGetMailbox:
             return_value=httpx.Response(200, json=payload)
         )
 
-        handler = await _get_handler(server, "email_get_mailbox")
+        handler = await _get_handler(server, "gandi_email_get_mailbox")
         result = await handler(ctx, domain="example.com", mailbox_id="mb-uuid")
 
         assert route.called
@@ -85,7 +85,7 @@ class TestEmailGetMailbox:
             return_value=httpx.Response(200, json={})
         )
 
-        handler = await _get_handler(server, "email_get_mailbox")
+        handler = await _get_handler(server, "gandi_email_get_mailbox")
         await handler(ctx, domain="weird/dom.com", mailbox_id="mb/weird")
 
         assert route.called
@@ -100,7 +100,7 @@ class TestEmailListForwards:
         payload = [{"source": "info", "destinations": ["a@b.com"]}]
         route = respx_mock.get("/v5/email/forwards/example.com").mock(return_value=httpx.Response(200, json=payload))
 
-        handler = await _get_handler(server, "email_list_forwards")
+        handler = await _get_handler(server, "gandi_email_list_forwards")
         result = await handler(ctx, domain="example.com")
 
         assert route.called
@@ -116,7 +116,7 @@ class TestEmailListSlots:
         payload = [{"id": 1, "status": "active", "mailbox_type": "standard"}]
         route = respx_mock.get("/v5/email/slots/example.com").mock(return_value=httpx.Response(200, json=payload))
 
-        handler = await _get_handler(server, "email_list_slots")
+        handler = await _get_handler(server, "gandi_email_list_slots")
         result = await handler(ctx, domain="example.com")
 
         assert route.called
@@ -133,7 +133,7 @@ class TestEmailGetSlot:
         payload = {"id": 1, "status": "active"}
         route = respx_mock.get("/v5/email/slots/example.com/1").mock(return_value=httpx.Response(200, json=payload))
 
-        handler = await _get_handler(server, "email_get_slot")
+        handler = await _get_handler(server, "gandi_email_get_slot")
         result = await handler(ctx, domain="example.com", slot_id="1")
 
         assert route.called
@@ -144,7 +144,7 @@ class TestEmailGetSlot:
             return_value=httpx.Response(200, json={})
         )
 
-        handler = await _get_handler(server, "email_get_slot")
+        handler = await _get_handler(server, "gandi_email_get_slot")
         await handler(ctx, domain="weird/dom.com", slot_id="slot/weird")
 
         assert route.called
@@ -164,7 +164,7 @@ class TestEmailUpdateMailbox:
             return_value=httpx.Response(200, json=payload)
         )
 
-        handler = await _get_handler(server, "email_update_mailbox")
+        handler = await _get_handler(server, "gandi_email_update_mailbox")
         result = await handler(
             ctx,
             domain="example.com",
@@ -189,7 +189,7 @@ class TestEmailUpdateMailbox:
         )
 
         responder = {"enabled": True, "subject": "OOO", "message": "Back Monday"}
-        handler = await _get_handler(server, "email_update_mailbox")
+        handler = await _get_handler(server, "gandi_email_update_mailbox")
         await handler(
             ctx,
             domain="example.com",
@@ -214,7 +214,7 @@ class TestEmailUpdateMailbox:
             return_value=httpx.Response(200, json={})
         )
 
-        handler = await _get_handler(server, "email_update_mailbox")
+        handler = await _get_handler(server, "gandi_email_update_mailbox")
         await handler(ctx, domain="example.com", mailbox_id="mb-uuid")
 
         assert route.called
@@ -226,7 +226,7 @@ class TestEmailUpdateMailbox:
             return_value=httpx.Response(200, json={})
         )
 
-        handler = await _get_handler(server, "email_update_mailbox")
+        handler = await _get_handler(server, "gandi_email_update_mailbox")
         await handler(
             ctx,
             domain="weird/dom.com",
@@ -243,7 +243,7 @@ class TestEmailDeleteMailbox:
     async def test_deletes_correct_endpoint(self, ctx: AsyncMock, respx_mock: Any, server: FastMCP) -> None:
         route = respx_mock.delete("/v5/email/mailboxes/example.com/mb-uuid").mock(return_value=httpx.Response(204))
 
-        handler = await _get_handler(server, "email_delete_mailbox")
+        handler = await _get_handler(server, "gandi_email_delete_mailbox")
         result = await handler(ctx, domain="example.com", mailbox_id="mb-uuid")
 
         assert route.called
@@ -260,7 +260,7 @@ class TestEmailPurgeMailbox:
             return_value=httpx.Response(204)
         )
 
-        handler = await _get_handler(server, "email_purge_mailbox")
+        handler = await _get_handler(server, "gandi_email_purge_mailbox")
         result = await handler(ctx, domain="example.com", mailbox_id="mb-uuid")
 
         assert route.called
@@ -275,7 +275,7 @@ class TestEmailCreateForward:
         payload = {"message": "Forward created"}
         route = respx_mock.post("/v5/email/forwards/example.com").mock(return_value=httpx.Response(201, json=payload))
 
-        handler = await _get_handler(server, "email_create_forward")
+        handler = await _get_handler(server, "gandi_email_create_forward")
         result = await handler(
             ctx,
             domain="example.com",
@@ -298,7 +298,7 @@ class TestEmailUpdateForward:
             return_value=httpx.Response(200, json=payload)
         )
 
-        handler = await _get_handler(server, "email_update_forward")
+        handler = await _get_handler(server, "gandi_email_update_forward")
         result = await handler(
             ctx,
             domain="example.com",
@@ -320,7 +320,7 @@ class TestEmailDeleteForward:
     async def test_deletes_correct_endpoint(self, ctx: AsyncMock, respx_mock: Any, server: FastMCP) -> None:
         route = respx_mock.delete("/v5/email/forwards/example.com/info").mock(return_value=httpx.Response(204))
 
-        handler = await _get_handler(server, "email_delete_forward")
+        handler = await _get_handler(server, "gandi_email_delete_forward")
         result = await handler(ctx, domain="example.com", source="info")
 
         assert route.called
@@ -332,7 +332,7 @@ class TestEmailDeleteForward:
             return_value=httpx.Response(204)
         )
 
-        handler = await _get_handler(server, "email_delete_forward")
+        handler = await _get_handler(server, "gandi_email_delete_forward")
         await handler(ctx, domain="weird/dom.com", source="info/weird")
 
         assert route.called
@@ -345,7 +345,7 @@ class TestEmailRefundSlot:
     async def test_deletes_correct_endpoint(self, ctx: AsyncMock, respx_mock: Any, server: FastMCP) -> None:
         route = respx_mock.delete("/v5/email/slots/example.com/1").mock(return_value=httpx.Response(204))
 
-        handler = await _get_handler(server, "email_refund_slot")
+        handler = await _get_handler(server, "gandi_email_refund_slot")
         result = await handler(ctx, domain="example.com", slot_id="1")
 
         assert route.called
@@ -365,7 +365,7 @@ class TestEmailCreateMailbox:
         payload = {"message": "Mailbox created"}
         route = respx_mock.post("/v5/email/mailboxes/example.com").mock(return_value=httpx.Response(201, json=payload))
 
-        handler = await _get_handler(server, "email_create_mailbox")
+        handler = await _get_handler(server, "gandi_email_create_mailbox")
         result = await handler(
             ctx,
             domain="example.com",
@@ -386,7 +386,7 @@ class TestEmailCreateMailbox:
     ) -> None:
         route = respx_mock.post("/v5/email/mailboxes/example.com").mock(return_value=httpx.Response(201, json={}))
 
-        handler = await _get_handler(server, "email_create_mailbox")
+        handler = await _get_handler(server, "gandi_email_create_mailbox")
         await handler(
             ctx,
             domain="example.com",
@@ -412,7 +412,7 @@ class TestEmailCreateSlot:
         payload = {"id": 2, "status": "inactive"}
         route = respx_mock.post("/v5/email/slots/example.com").mock(return_value=httpx.Response(201, json=payload))
 
-        handler = await _get_handler(server, "email_create_slot")
+        handler = await _get_handler(server, "gandi_email_create_slot")
         result = await handler(ctx, domain="example.com", mailbox_type="premium")
 
         assert route.called
@@ -424,7 +424,7 @@ class TestEmailCreateSlot:
     async def test_default_mailbox_type_is_standard(self, ctx: AsyncMock, respx_mock: Any, server: FastMCP) -> None:
         route = respx_mock.post("/v5/email/slots/example.com").mock(return_value=httpx.Response(201, json={}))
 
-        handler = await _get_handler(server, "email_create_slot")
+        handler = await _get_handler(server, "gandi_email_create_slot")
         await handler(ctx, domain="example.com")
 
         assert route.called
@@ -440,7 +440,7 @@ class TestEmailRenewMailbox:
             return_value=httpx.Response(202, json=payload)
         )
 
-        handler = await _get_handler(server, "email_renew_mailbox")
+        handler = await _get_handler(server, "gandi_email_renew_mailbox")
         result = await handler(
             ctx,
             domain="example.com",
@@ -459,7 +459,7 @@ class TestEmailRenewMailbox:
             return_value=httpx.Response(202, json={})
         )
 
-        handler = await _get_handler(server, "email_renew_mailbox")
+        handler = await _get_handler(server, "gandi_email_renew_mailbox")
         await handler(
             ctx,
             domain="example.com",

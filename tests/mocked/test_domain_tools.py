@@ -1,9 +1,9 @@
 """Mocked-integration tests for domain tools (28 tools).
 
 Largest module in the suite. Covers all read, write, and purchase tools.
-DANGEROUS-mock-only-forever tools (``domain_update_contacts``,
-``domain_set_nameservers``, ``domain_initiate_ownership_change``,
-``domain_resend_foa``, ``domain_delete``) get the same body-shape coverage
+DANGEROUS-mock-only-forever tools (``gandi_domain_update_contacts``,
+``gandi_domain_set_nameservers``, ``gandi_domain_initiate_ownership_change``,
+``gandi_domain_resend_foa``, ``gandi_domain_delete``) get the same body-shape coverage
 as the safer writes — at this tier all tools are exercised identically;
 the live tier is where the operational distinction matters.
 """
@@ -54,7 +54,7 @@ class TestDomainListDomains:
         payload = [{"fqdn": "example.com", "id": "d-uuid"}]
         route = respx_mock.get("/v5/domain/domains").mock(return_value=httpx.Response(200, json=payload))
 
-        handler = await _get_handler(server, "domain_list_domains")
+        handler = await _get_handler(server, "gandi_domain_list_domains")
         result = await handler(ctx)
 
         assert route.called
@@ -67,7 +67,7 @@ class TestDomainListDomains:
     ) -> None:
         route = respx_mock.get("/v5/domain/domains").mock(return_value=httpx.Response(200, json=[]))
 
-        handler = await _get_handler(server, "domain_list_domains")
+        handler = await _get_handler(server, "gandi_domain_list_domains")
         await handler(ctx, per_page=100, page=1, fqdn_filter=None)
 
         assert route.called
@@ -77,7 +77,7 @@ class TestDomainListDomains:
     async def test_passes_filters_when_provided(self, ctx: AsyncMock, respx_mock: Any, server: FastMCP) -> None:
         route = respx_mock.get("/v5/domain/domains").mock(return_value=httpx.Response(200, json=[]))
 
-        handler = await _get_handler(server, "domain_list_domains")
+        handler = await _get_handler(server, "gandi_domain_list_domains")
         await handler(ctx, fqdn_filter="example", tld="com", per_page=50, page=2)
 
         assert route.called
@@ -97,7 +97,7 @@ class TestDomainGetDomain:
         payload = {"fqdn": "example.com", "id": "d-uuid", "status": []}
         route = respx_mock.get("/v5/domain/domains/example.com").mock(return_value=httpx.Response(200, json=payload))
 
-        handler = await _get_handler(server, "domain_get_domain")
+        handler = await _get_handler(server, "gandi_domain_get_domain")
         result = await handler(ctx, fqdn="example.com")
 
         assert route.called
@@ -106,7 +106,7 @@ class TestDomainGetDomain:
     async def test_url_encodes_fqdn(self, ctx: AsyncMock, respx_mock: Any, server: FastMCP) -> None:
         route = respx_mock.get("/v5/domain/domains/weird%2Fdom.com").mock(return_value=httpx.Response(200, json={}))
 
-        handler = await _get_handler(server, "domain_get_domain")
+        handler = await _get_handler(server, "gandi_domain_get_domain")
         await handler(ctx, fqdn="weird/dom.com")
 
         assert route.called
@@ -118,7 +118,7 @@ class TestDomainGetStatus:
     async def test_hits_get_domain_and_applies_status_view(
         self, ctx: AsyncMock, respx_mock: Any, server: FastMCP
     ) -> None:
-        # Wraps domain_get_domain then applies _status_view — assert both ends.
+        # Wraps gandi_domain_get_domain then applies _status_view — assert both ends.
         payload = {
             "fqdn": "example.com",
             "status": ["clientTransferProhibited"],
@@ -127,7 +127,7 @@ class TestDomainGetStatus:
         }
         route = respx_mock.get("/v5/domain/domains/example.com").mock(return_value=httpx.Response(200, json=payload))
 
-        handler = await _get_handler(server, "domain_get_status")
+        handler = await _get_handler(server, "gandi_domain_get_status")
         result = await handler(ctx, fqdn="example.com")
 
         assert route.called
@@ -147,7 +147,7 @@ class TestDomainCheckAvailability:
         payload = {"products": [{"name": "example.com", "status": "available"}]}
         route = respx_mock.get("/v5/domain/check").mock(return_value=httpx.Response(200, json=payload))
 
-        handler = await _get_handler(server, "domain_check_availability")
+        handler = await _get_handler(server, "gandi_domain_check_availability")
         result = await handler(ctx, name="example.com")
 
         assert route.called
@@ -160,7 +160,7 @@ class TestDomainCheckAvailability:
     ) -> None:
         route = respx_mock.get("/v5/domain/check").mock(return_value=httpx.Response(200, json={}))
 
-        handler = await _get_handler(server, "domain_check_availability")
+        handler = await _get_handler(server, "gandi_domain_check_availability")
         await handler(
             ctx,
             name="example",
@@ -194,7 +194,7 @@ class TestDomainGetClaims:
             return_value=httpx.Response(200, json=payload)
         )
 
-        handler = await _get_handler(server, "domain_get_claims")
+        handler = await _get_handler(server, "gandi_domain_get_claims")
         result = await handler(ctx, fqdn="example.com")
 
         assert route.called
@@ -211,7 +211,7 @@ class TestDomainGetContacts:
             return_value=httpx.Response(200, json=payload)
         )
 
-        handler = await _get_handler(server, "domain_get_contacts")
+        handler = await _get_handler(server, "gandi_domain_get_contacts")
         result = await handler(ctx, fqdn="example.com")
 
         assert route.called
@@ -228,7 +228,7 @@ class TestDomainGetNameservers:
             return_value=httpx.Response(200, json=payload)
         )
 
-        handler = await _get_handler(server, "domain_get_nameservers")
+        handler = await _get_handler(server, "gandi_domain_get_nameservers")
         result = await handler(ctx, fqdn="example.com")
 
         assert route.called
@@ -245,7 +245,7 @@ class TestDomainListGlueRecords:
             return_value=httpx.Response(200, json=payload)
         )
 
-        handler = await _get_handler(server, "domain_list_glue_records")
+        handler = await _get_handler(server, "gandi_domain_list_glue_records")
         result = await handler(ctx, fqdn="example.com")
 
         assert route.called
@@ -262,7 +262,7 @@ class TestDomainGetGlueRecord:
             return_value=httpx.Response(200, json=payload)
         )
 
-        handler = await _get_handler(server, "domain_get_glue_record")
+        handler = await _get_handler(server, "gandi_domain_get_glue_record")
         result = await handler(ctx, fqdn="example.com", name="ns1")
 
         assert route.called
@@ -273,7 +273,7 @@ class TestDomainGetGlueRecord:
             return_value=httpx.Response(200, json={})
         )
 
-        handler = await _get_handler(server, "domain_get_glue_record")
+        handler = await _get_handler(server, "gandi_domain_get_glue_record")
         await handler(ctx, fqdn="weird/dom.com", name="ns/weird")
 
         assert route.called
@@ -290,7 +290,7 @@ class TestDomainListDnssecKeys:
             return_value=httpx.Response(200, json=payload)
         )
 
-        handler = await _get_handler(server, "domain_list_dnssec_keys")
+        handler = await _get_handler(server, "gandi_domain_list_dnssec_keys")
         result = await handler(ctx, fqdn="example.com")
 
         assert route.called
@@ -307,7 +307,7 @@ class TestDomainGetRenewInfo:
             return_value=httpx.Response(200, json=payload)
         )
 
-        handler = await _get_handler(server, "domain_get_renew_info")
+        handler = await _get_handler(server, "gandi_domain_get_renew_info")
         result = await handler(ctx, fqdn="example.com")
 
         assert route.called
@@ -322,7 +322,7 @@ class TestDomainGetTransferinInfo:
         payload = {"available": True, "prices": []}
         route = respx_mock.get("/v5/domain/transferin/example.com").mock(return_value=httpx.Response(200, json=payload))
 
-        handler = await _get_handler(server, "domain_get_transferin_info")
+        handler = await _get_handler(server, "gandi_domain_get_transferin_info")
         result = await handler(ctx, fqdn="example.com")
 
         assert route.called
@@ -339,7 +339,7 @@ class TestDomainGetOwnershipChangeStatus:
             return_value=httpx.Response(200, json=payload)
         )
 
-        handler = await _get_handler(server, "domain_get_ownership_change_status")
+        handler = await _get_handler(server, "gandi_domain_get_ownership_change_status")
         result = await handler(ctx, fqdn="example.com")
 
         assert route.called
@@ -359,7 +359,7 @@ class TestDomainSetAutorenew:
             return_value=httpx.Response(200, json=payload)
         )
 
-        handler = await _get_handler(server, "domain_set_autorenew")
+        handler = await _get_handler(server, "gandi_domain_set_autorenew")
         result = await handler(ctx, fqdn="example.com", enabled=True)
 
         assert route.called
@@ -375,7 +375,7 @@ class TestDomainSetAutorenew:
             return_value=httpx.Response(200, json={})
         )
 
-        handler = await _get_handler(server, "domain_set_autorenew")
+        handler = await _get_handler(server, "gandi_domain_set_autorenew")
         await handler(ctx, fqdn="example.com", enabled=True, duration=2)
 
         assert route.called
@@ -387,7 +387,7 @@ class TestDomainSetAutorenew:
             return_value=httpx.Response(200, json={})
         )
 
-        handler = await _get_handler(server, "domain_set_autorenew")
+        handler = await _get_handler(server, "gandi_domain_set_autorenew")
         await handler(ctx, fqdn="example.com", enabled=False)
 
         assert route.called
@@ -406,7 +406,7 @@ class TestDomainUpdateContacts:
         )
 
         admin = {"given": "Jane", "family": "Doe"}
-        handler = await _get_handler(server, "domain_update_contacts")
+        handler = await _get_handler(server, "gandi_domain_update_contacts")
         result = await handler(ctx, fqdn="example.com", admin=admin)
 
         assert route.called
@@ -426,7 +426,7 @@ class TestDomainUpdateContacts:
         admin = {"given": "A"}
         tech = {"given": "T"}
         bill = {"given": "B"}
-        handler = await _get_handler(server, "domain_update_contacts")
+        handler = await _get_handler(server, "gandi_domain_update_contacts")
         await handler(ctx, fqdn="example.com", admin=admin, tech=tech, bill=bill)
 
         assert route.called
@@ -438,7 +438,7 @@ class TestDomainUpdateContacts:
             return_value=httpx.Response(200, json={})
         )
 
-        handler = await _get_handler(server, "domain_update_contacts")
+        handler = await _get_handler(server, "gandi_domain_update_contacts")
         await handler(ctx, fqdn="example.com")
 
         assert route.called
@@ -456,7 +456,7 @@ class TestDomainSetNameservers:
             return_value=httpx.Response(200, json=payload)
         )
 
-        handler = await _get_handler(server, "domain_set_nameservers")
+        handler = await _get_handler(server, "gandi_domain_set_nameservers")
         result = await handler(ctx, fqdn="example.com", nameservers=["ns1.example.com", "ns2.example.com"])
 
         assert route.called
@@ -474,7 +474,7 @@ class TestDomainCreateGlueRecord:
             return_value=httpx.Response(201, json=payload)
         )
 
-        handler = await _get_handler(server, "domain_create_glue_record")
+        handler = await _get_handler(server, "gandi_domain_create_glue_record")
         result = await handler(ctx, fqdn="example.com", name="ns1", ips=["192.0.2.1", "2001:db8::1"])
 
         assert route.called
@@ -492,7 +492,7 @@ class TestDomainUpdateGlueRecord:
             return_value=httpx.Response(200, json=payload)
         )
 
-        handler = await _get_handler(server, "domain_update_glue_record")
+        handler = await _get_handler(server, "gandi_domain_update_glue_record")
         result = await handler(ctx, fqdn="example.com", name="ns1", ips=["192.0.2.99"])
 
         assert route.called
@@ -509,7 +509,7 @@ class TestDomainDeleteGlueRecord:
     async def test_deletes_correct_endpoint(self, ctx: AsyncMock, respx_mock: Any, server: FastMCP) -> None:
         route = respx_mock.delete("/v5/domain/domains/example.com/hosts/ns1").mock(return_value=httpx.Response(204))
 
-        handler = await _get_handler(server, "domain_delete_glue_record")
+        handler = await _get_handler(server, "gandi_domain_delete_glue_record")
         result = await handler(ctx, fqdn="example.com", name="ns1")
 
         assert route.called
@@ -526,7 +526,7 @@ class TestDomainCreateDnssecKey:
             return_value=httpx.Response(201, json=payload)
         )
 
-        handler = await _get_handler(server, "domain_create_dnssec_key")
+        handler = await _get_handler(server, "gandi_domain_create_dnssec_key")
         result = await handler(
             ctx,
             fqdn="example.com",
@@ -548,7 +548,7 @@ class TestDomainDeleteDnssecKey:
     async def test_deletes_correct_endpoint(self, ctx: AsyncMock, respx_mock: Any, server: FastMCP) -> None:
         route = respx_mock.delete("/v5/domain/domains/example.com/dnskeys/k1").mock(return_value=httpx.Response(204))
 
-        handler = await _get_handler(server, "domain_delete_dnssec_key")
+        handler = await _get_handler(server, "gandi_domain_delete_dnssec_key")
         result = await handler(ctx, fqdn="example.com", key_id="k1")
 
         assert route.called
@@ -561,7 +561,7 @@ class TestDomainDeleteDnssecKey:
             return_value=httpx.Response(204)
         )
 
-        handler = await _get_handler(server, "domain_delete_dnssec_key")
+        handler = await _get_handler(server, "gandi_domain_delete_dnssec_key")
         await handler(ctx, fqdn="weird/dom.com", key_id="k/weird")
 
         assert route.called
@@ -578,7 +578,7 @@ class TestDomainResetAuthinfo:
             return_value=httpx.Response(200, json=payload)
         )
 
-        handler = await _get_handler(server, "domain_reset_authinfo")
+        handler = await _get_handler(server, "gandi_domain_reset_authinfo")
         result = await handler(ctx, fqdn="example.com")
 
         assert route.called
@@ -601,7 +601,7 @@ class TestDomainInitiateOwnershipChange:
         )
 
         owner = {"given": "Jane", "family": "Doe", "email": "jane@example.com"}
-        handler = await _get_handler(server, "domain_initiate_ownership_change")
+        handler = await _get_handler(server, "gandi_domain_initiate_ownership_change")
         result = await handler(ctx, fqdn="example.com", owner=owner)
 
         assert route.called
@@ -617,7 +617,7 @@ class TestDomainInitiateOwnershipChange:
         route = respx_mock.post("/v5/domain/changeowner/example.com").mock(return_value=httpx.Response(202, json={}))
 
         owner = {"given": "X"}
-        handler = await _get_handler(server, "domain_initiate_ownership_change")
+        handler = await _get_handler(server, "gandi_domain_initiate_ownership_change")
         await handler(ctx, fqdn="example.com", owner=owner, notify_former_owner=False)
 
         assert route.called
@@ -637,7 +637,7 @@ class TestDomainResendFoa:
             return_value=httpx.Response(200, json=payload)
         )
 
-        handler = await _get_handler(server, "domain_resend_foa")
+        handler = await _get_handler(server, "gandi_domain_resend_foa")
         result = await handler(ctx, fqdn="example.com")
 
         assert route.called
@@ -653,7 +653,7 @@ class TestDomainDelete:
     async def test_deletes_correct_endpoint(self, ctx: AsyncMock, respx_mock: Any, server: FastMCP) -> None:
         route = respx_mock.delete("/v5/domain/domains/example.com").mock(return_value=httpx.Response(204))
 
-        handler = await _get_handler(server, "domain_delete")
+        handler = await _get_handler(server, "gandi_domain_delete")
         result = await handler(ctx, fqdn="example.com")
 
         assert route.called
@@ -680,7 +680,7 @@ class TestDomainRegister:
             "bill": {"given": "Jane"},
             "nameservers": ["ns1.example.com"],
         }
-        handler = await _get_handler(server, "domain_register")
+        handler = await _get_handler(server, "gandi_domain_register")
         result = await handler(ctx, data=data)
 
         assert route.called
@@ -701,7 +701,7 @@ class TestDomainRenew:
             return_value=httpx.Response(202, json=payload)
         )
 
-        handler = await _get_handler(server, "domain_renew")
+        handler = await _get_handler(server, "gandi_domain_renew")
         result = await handler(ctx, fqdn="example.com", duration=2)
 
         assert route.called
@@ -714,7 +714,7 @@ class TestDomainRenew:
     async def test_default_duration_is_one(self, ctx: AsyncMock, respx_mock: Any, server: FastMCP) -> None:
         route = respx_mock.post("/v5/domain/domains/example.com/renew").mock(return_value=httpx.Response(202, json={}))
 
-        handler = await _get_handler(server, "domain_renew")
+        handler = await _get_handler(server, "gandi_domain_renew")
         await handler(ctx, fqdn="example.com")
 
         assert route.called
@@ -725,7 +725,7 @@ class TestDomainRenew:
     async def test_includes_currency_when_provided(self, ctx: AsyncMock, respx_mock: Any, server: FastMCP) -> None:
         route = respx_mock.post("/v5/domain/domains/example.com/renew").mock(return_value=httpx.Response(202, json={}))
 
-        handler = await _get_handler(server, "domain_renew")
+        handler = await _get_handler(server, "gandi_domain_renew")
         await handler(ctx, fqdn="example.com", duration=3, currency="EUR")
 
         assert route.called
@@ -739,7 +739,7 @@ class TestDomainRenew:
             return_value=httpx.Response(202, json={})
         )
 
-        handler = await _get_handler(server, "domain_renew")
+        handler = await _get_handler(server, "gandi_domain_renew")
         await handler(ctx, fqdn="weird/dom.com")
 
         assert route.called
@@ -761,7 +761,7 @@ class TestDomainTransferIn:
             "owner": {"given": "Jane", "family": "Doe", "email": "jane@example.com"},
             "nameservers": ["ns1.example.com", "ns2.example.com"],
         }
-        handler = await _get_handler(server, "domain_transfer_in")
+        handler = await _get_handler(server, "gandi_domain_transfer_in")
         result = await handler(ctx, fqdn="example.com", data=data)
 
         assert route.called

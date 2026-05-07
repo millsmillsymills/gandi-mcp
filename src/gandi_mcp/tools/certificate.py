@@ -20,7 +20,7 @@ def register_certificate_tools(mcp: FastMCP) -> None:
     # ── Read ────────────────────────────────────────────────────────────
 
     @mcp.tool(tags={"gandi", "certificate"})
-    async def cert_list(
+    async def gandi_cert_list(
         ctx: Context,
         status: str | None = None,
         per_page: int = 100,
@@ -33,6 +33,10 @@ def register_certificate_tools(mcp: FastMCP) -> None:
                 "pending", "replaced").
             per_page: Page size.
             page: Page number.
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             return await get_client(ctx).cert_list(status=status, per_page=per_page, page=page)
@@ -40,11 +44,15 @@ def register_certificate_tools(mcp: FastMCP) -> None:
             handle_client_error(e)
 
     @mcp.tool(tags={"gandi", "certificate"})
-    async def cert_get(ctx: Context, cert_id: str) -> dict[str, Any]:
+    async def gandi_cert_get(ctx: Context, cert_id: str) -> dict[str, Any]:
         """Retrieve details for a specific certificate.
 
         Args:
             cert_id: Certificate UUID.
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             return await get_client(ctx).cert_get(cert_id)
@@ -57,11 +65,15 @@ def register_certificate_tools(mcp: FastMCP) -> None:
         tags={"gandi", "certificate", "write"},
         annotations={"readOnlyHint": False, "destructiveHint": True},
     )
-    async def cert_revoke(ctx: Context, cert_id: str) -> dict[str, Any]:
+    async def gandi_cert_revoke(ctx: Context, cert_id: str) -> dict[str, Any]:
         """Revoke an issued certificate.
 
         Args:
             cert_id: Certificate UUID.
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             assert_readwrite(ctx, "revoke certificate")
@@ -75,7 +87,7 @@ def register_certificate_tools(mcp: FastMCP) -> None:
         tags={"gandi", "certificate", "write", "purchase"},
         annotations={"readOnlyHint": False, "destructiveHint": False, "openWorldHint": True},
     )
-    async def cert_issue(ctx: Context, data: dict[str, Any]) -> dict[str, Any]:
+    async def gandi_cert_issue(ctx: Context, data: dict[str, Any]) -> dict[str, Any]:
         """Issue a new SSL certificate (SPENDS MONEY).
 
         Requires GANDI_MODE=readwrite AND GANDI_ALLOW_PURCHASES=true.
@@ -84,6 +96,10 @@ def register_certificate_tools(mcp: FastMCP) -> None:
             data: Full issuance payload per the Gandi certificate schema —
                 must include ``cn``, ``package``, ``duration``, a CSR, and a
                 DCV method.
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             assert_readwrite(ctx, "issue certificate")
@@ -96,7 +112,7 @@ def register_certificate_tools(mcp: FastMCP) -> None:
         tags={"gandi", "certificate", "write", "purchase"},
         annotations={"readOnlyHint": False, "destructiveHint": False, "openWorldHint": True},
     )
-    async def cert_renew(ctx: Context, cert_id: str, data: dict[str, Any]) -> dict[str, Any]:
+    async def gandi_cert_renew(ctx: Context, cert_id: str, data: dict[str, Any]) -> dict[str, Any]:
         """Renew an existing certificate (SPENDS MONEY).
 
         Requires GANDI_MODE=readwrite AND GANDI_ALLOW_PURCHASES=true.
@@ -104,6 +120,10 @@ def register_certificate_tools(mcp: FastMCP) -> None:
         Args:
             cert_id: Certificate UUID.
             data: Renewal payload (new CSR, duration, DCV method).
+
+
+        Returns:
+            Gandi API response payload (see `https://api.gandi.net/docs` for the schema).
         """
         try:
             assert_readwrite(ctx, "renew certificate")

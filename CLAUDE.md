@@ -66,7 +66,7 @@ src/gandi_mcp/
 
 - **Python >=3.13**, strict ty, ruff for lint+format
 - **Line length**: 120 characters
-- **Tool naming**: `{area}_{verb}_{entity}` (e.g. `domain_list_domains`, `livedns_create_record`, `cert_revoke`). Exception: `org_*` for organization tools.
+- **Tool naming**: `gandi_{area}_{verb}_{entity}` (e.g. `gandi_domain_list_domains`, `gandi_livedns_create_record`, `gandi_cert_revoke`, `gandi_org_get_user_info`). The `gandi_` prefix is required by PROTO-002 to avoid collisions when multiple MCP servers attach to the same client.
 - **Tags**: every tool carries `{"gandi", "<area>"}`. Write tools add `"write"`. Purchase tools add both `"write"` AND `"purchase"`.
 - **Annotations**: write tools set `readOnlyHint=False`; destructive writes set `destructiveHint=True`; purchase tools additionally set `openWorldHint=True` (they affect external state beyond the Gandi account).
 - **Defense-in-depth**: visibility gating in `server.py` (`mcp.disable(tags={"write"})`, `mcp.disable(tags={"purchase"})`) PLUS runtime `assert_readwrite` / `assert_purchases_allowed` calls inside each handler.
@@ -92,7 +92,7 @@ Purchase tools are tagged `{"write", "purchase"}` — both `mcp.disable(tags={"w
 ### Adding a read tool
 ```python
 @mcp.tool(tags={"gandi", "domain"})
-async def domain_get_domain(ctx: Context, fqdn: str) -> dict[str, Any]:
+async def gandi_domain_get_domain(ctx: Context, fqdn: str) -> dict[str, Any]:
     """One-line summary.
 
     Args:
@@ -110,7 +110,7 @@ async def domain_get_domain(ctx: Context, fqdn: str) -> dict[str, Any]:
     tags={"gandi", "domain", "write"},
     annotations={"readOnlyHint": False, "destructiveHint": False},
 )
-async def domain_set_nameservers(ctx: Context, fqdn: str, nameservers: list[str]) -> dict[str, Any]:
+async def gandi_domain_set_nameservers(ctx: Context, fqdn: str, nameservers: list[str]) -> dict[str, Any]:
     """..."""
     try:
         assert_readwrite(ctx, "update nameservers")
@@ -125,7 +125,7 @@ async def domain_set_nameservers(ctx: Context, fqdn: str, nameservers: list[str]
     tags={"gandi", "domain", "write", "purchase"},
     annotations={"readOnlyHint": False, "destructiveHint": False, "openWorldHint": True},
 )
-async def domain_register(ctx: Context, data: dict[str, Any]) -> dict[str, Any]:
+async def gandi_domain_register(ctx: Context, data: dict[str, Any]) -> dict[str, Any]:
     """SPENDS MONEY. Requires GANDI_MODE=readwrite AND GANDI_ALLOW_PURCHASES=true."""
     try:
         assert_readwrite(ctx, "register domain")
@@ -146,8 +146,8 @@ async def domain_register(ctx: Context, data: dict[str, Any]) -> dict[str, Any]:
 
 Operations Gandi's v5 REST API does not expose, surfaced here so an LLM doesn't waste a turn searching for a tool that cannot exist:
 
-- **Registrar transfer-lock toggle.** v5 reports `clientTransferProhibited` in `GET /v5/domain/domains/{fqdn}` (surfaced via `domain_get_status`) but has no write endpoint to set it. The legacy XML-RPC API (`domain.status.lock` / `domain.status.unlock`) does, but this server is v5/Bearer only — adding XML-RPC would mean a second auth path. Unlocking is a manual UI step.
-- **Email subscription cancellation.** `email_refund_slot` only refunds an unused slot within the refund window; the recurring subscription itself has no v5 cancel endpoint.
+- **Registrar transfer-lock toggle.** v5 reports `clientTransferProhibited` in `GET /v5/domain/domains/{fqdn}` (surfaced via `gandi_domain_get_status`) but has no write endpoint to set it. The legacy XML-RPC API (`domain.status.lock` / `domain.status.unlock`) does, but this server is v5/Bearer only — adding XML-RPC would mean a second auth path. Unlocking is a manual UI step.
+- **Email subscription cancellation.** `gandi_email_refund_slot` only refunds an unused slot within the refund window; the recurring subscription itself has no v5 cancel endpoint.
 - **Outbound transfer state / approval.** v5 has no outbound-transfer endpoint; Gandi drives this via FOA email.
 
 A future PR could add an XML-RPC fallback for the lock toggle if it becomes load-bearing for any flow, but `GANDI_TOKEN` would gain a second meaning (PAT for v5, apikey for XML-RPC) and that asymmetry is the reason it isn't there today.

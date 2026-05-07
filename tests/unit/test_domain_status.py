@@ -1,4 +1,4 @@
-"""Tests for the read-only ``domain_get_status`` tool.
+"""Tests for the read-only ``gandi_domain_get_status`` tool.
 
 Pins two things:
 
@@ -81,9 +81,9 @@ class TestVisibility:
     async def test_visible_in_readonly_mode(self) -> None:
         server = create_server(_config(gandi_mode=GandiMode.READONLY))
         names = {t.name for t in await server.list_tools()}
-        assert "domain_get_status" in names
+        assert "gandi_domain_get_status" in names
 
     async def test_visible_in_readwrite_mode(self) -> None:
         server = create_server(_config(gandi_mode=GandiMode.READWRITE))
         names = {t.name for t in await server.list_tools()}
-        assert "domain_get_status" in names
+        assert "gandi_domain_get_status" in names
