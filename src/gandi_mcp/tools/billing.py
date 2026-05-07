@@ -54,6 +54,8 @@ def register_billing_read_tools(mcp: FastMCP) -> None:
     ) -> dict[str, Any]:
         """Retrieve pricing for a product category (no charge).
 
+        Returns: Gandi price-catalog payload — see `https://api.gandi.net/docs`.
+
         Useful for previewing costs before any purchase-mode operation.
 
         Args:
