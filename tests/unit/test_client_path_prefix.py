@@ -61,9 +61,41 @@ def _is_self_extension(value: ast.expr, name: str) -> bool:
     return isinstance(first.value, ast.Name) and first.value.id == name
 
 
-def _assignments_to(method: ast.AsyncFunctionDef, name: str) -> list[ast.expr]:
+def _own_calls(method: ast.AsyncFunctionDef | ast.FunctionDef) -> list[ast.Call]:
+    """Yield every ``Call`` lexically inside ``method`` excluding nested defs.
+
+    ``ast.walk`` descends into nested ``AsyncFunctionDef`` / ``FunctionDef`` /
+    ``Lambda`` bodies, which would cause an inner method's ``self.get(path)`` to
+    be evaluated against the *outer* method's local-assignment scope — producing
+    spurious offenders. Stop descending at any function boundary.
+    """
+    out: list[ast.Call] = []
+    stack: list[ast.AST] = list(method.body)
+    while stack:
+        node = stack.pop()
+        if isinstance(node, ast.Call):
+            out.append(node)
+        # Don't descend into a nested function/lambda body — those are scanned
+        # separately by the outer iterator.
+        if isinstance(node, ast.AsyncFunctionDef | ast.FunctionDef | ast.Lambda):
+            continue
+        stack.extend(ast.iter_child_nodes(node))
+    return out
+
+
+def _own_assignments_to(method: ast.AsyncFunctionDef | ast.FunctionDef, name: str) -> list[ast.expr]:
+    """Every assignment to ``name`` lexically inside ``method`` excluding nested defs.
+
+    Captures plain ``Assign``, ``AnnAssign``, ``AugAssign`` (e.g. ``path += x``),
+    and walrus ``NamedExpr`` (``(path := x)``). Plain and annotated assignments
+    return the RHS as the bound value; AugAssign and walrus return a sentinel
+    ``ast.Name(id="<unsafe>")`` because the resulting value may incorporate
+    arbitrary RHS data not visible to the prefix check — fail closed.
+    """
     found: list[ast.expr] = []
-    for node in ast.walk(method):
+    stack: list[ast.AST] = list(method.body)
+    while stack:
+        node = stack.pop()
         if isinstance(node, ast.Assign):
             found.extend(node.value for target in node.targets if isinstance(target, ast.Name) and target.id == name)
         elif (
@@ -73,17 +105,30 @@ def _assignments_to(method: ast.AsyncFunctionDef, name: str) -> list[ast.expr]:
             and node.target.id == name
         ):
             found.append(node.value)
+        elif isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name) and node.target.id == name:
+            # path += x — value is (current path) ++ (x); not a clean bootstrap
+            # or extension. Fail closed.
+            found.append(ast.Name(id="<unsafe>"))
+        elif isinstance(node, ast.NamedExpr) and isinstance(node.target, ast.Name) and node.target.id == name:
+            # (path := x) — RHS could be anything. Fail closed unless RHS is
+            # itself a /v5/-prefixed expression (then keep the prefix invariant).
+            found.append(node.value if _starts_with_prefix(node.value) else ast.Name(id="<unsafe>"))
+        if isinstance(node, ast.AsyncFunctionDef | ast.FunctionDef | ast.Lambda):
+            continue
+        stack.extend(ast.iter_child_nodes(node))
     return found
 
 
-def _local_resolves_to_v5_prefix(method: ast.AsyncFunctionDef, name: str) -> bool:
+def _local_resolves_to_v5_prefix(method: ast.AsyncFunctionDef | ast.FunctionDef, name: str) -> bool:
     """A local ``name`` resolves to a ``/v5/``-prefixed string.
 
     Requires at least one bootstrap assignment that begins with ``/v5/`` and
     every other assignment to be either another bootstrap or an extension of
-    the same name (``f"{name}/..."``).
+    the same name (``f"{name}/..."``). Any AugAssign or walrus injection of
+    untrusted data is rejected — the sentinel ``Name("<unsafe>")`` placeholder
+    fails both the prefix and extension checks.
     """
-    assignments = _assignments_to(method, name)
+    assignments = _own_assignments_to(method, name)
     if not assignments:
         return False
     has_bootstrap = any(_starts_with_prefix(v) for v in assignments)
@@ -91,7 +136,7 @@ def _local_resolves_to_v5_prefix(method: ast.AsyncFunctionDef, name: str) -> boo
     return has_bootstrap and all_ok
 
 
-def _path_arg_is_safe(method: ast.AsyncFunctionDef, call: ast.Call) -> bool:
+def _path_arg_is_safe(method: ast.AsyncFunctionDef | ast.FunctionDef, call: ast.Call) -> bool:
     if not call.args:
         return False
     arg = call.args[0]
@@ -102,20 +147,32 @@ def _path_arg_is_safe(method: ast.AsyncFunctionDef, call: ast.Call) -> bool:
     return False
 
 
+def _toplevel_methods(tree: ast.Module) -> list[ast.AsyncFunctionDef | ast.FunctionDef]:
+    """Every method-shaped function defined directly inside any class body.
+
+    Skips nested function defs so each call is checked against exactly one
+    enclosing scope.
+    """
+    out: list[ast.AsyncFunctionDef | ast.FunctionDef] = []
+    for cls in ast.walk(tree):
+        if not isinstance(cls, ast.ClassDef):
+            continue
+        out.extend(stmt for stmt in cls.body if isinstance(stmt, ast.AsyncFunctionDef | ast.FunctionDef))
+    return out
+
+
 def test_all_client_paths_start_with_v5() -> None:
     """Every ``self.<http>(path, ...)`` call uses a ``/v5/``-prefixed path."""
     tree = ast.parse(inspect.getsource(gandi))
     offenders: list[str] = []
     checked = 0
-    for method in ast.walk(tree):
-        if not isinstance(method, ast.AsyncFunctionDef):
-            continue
-        for node in ast.walk(method):
-            if not _is_self_http_call(node):
+    for method in _toplevel_methods(tree):
+        for call in _own_calls(method):
+            if not _is_self_http_call(call):
                 continue
             checked += 1
-            if not _path_arg_is_safe(method, node):
-                offenders.append(f"{method.name}: {ast.unparse(node)}")
+            if not _path_arg_is_safe(method, call):
+                offenders.append(f"{method.name}: {ast.unparse(call)}")
     assert not offenders, "client paths missing /v5/ prefix:\n  " + "\n  ".join(offenders)
     assert checked > 0, "AST walker found no self.<http>() calls — test is no-op"
 
@@ -157,3 +214,111 @@ def test_local_var_without_bootstrap_fails() -> None:
     method = ast.parse(src).body[0]
     assert isinstance(method, ast.AsyncFunctionDef)
     assert not _local_resolves_to_v5_prefix(method, "path")
+
+
+# ── Mutation tests — confirm the walker FLAGS unsafe patterns end-to-end ────
+
+
+def _run_walker(src: str) -> list[str]:
+    """Run the full walker against synthetic source; return offender strings."""
+    tree = ast.parse(src)
+    offenders: list[str] = []
+    for method in _toplevel_methods(tree):
+        for call in _own_calls(method):
+            if not _is_self_http_call(call):
+                continue
+            if not _path_arg_is_safe(method, call):
+                offenders.append(f"{method.name}: {ast.unparse(call)}")
+    return offenders
+
+
+def test_walker_flags_parameter_as_path() -> None:
+    """A ``self.get(path)`` where ``path`` is a parameter must be flagged."""
+    src = "class C:\n    async def custom(self, path: str):\n        return await self.get(path)\n"
+    offenders = _run_walker(src)
+    assert offenders, "walker failed to flag a parameter-as-path call"
+    assert "custom" in offenders[0]
+
+
+def test_walker_flags_absolute_url_literal() -> None:
+    """A literal absolute URL must be flagged even though it's a string constant."""
+    src = "class C:\n    async def leak(self):\n        return await self.get('https://evil.example/leak')\n"
+    offenders = _run_walker(src)
+    assert offenders, "walker failed to flag an absolute-URL literal"
+
+
+def test_walker_flags_augassign_extension() -> None:
+    """``path = f'/v5/x'; path += user_input; self.get(path)`` must fail closed.
+
+    The AugAssign concatenates arbitrary RHS data onto an otherwise-safe
+    bootstrap. Without this guard a future contributor could route attacker
+    data through ``+=`` and slip past the prefix check.
+    """
+    src = (
+        "class C:\n"
+        "    async def grow(self, user):\n"
+        "        path = f'/v5/x'\n"
+        "        path += user\n"
+        "        return await self.get(path)\n"
+    )
+    offenders = _run_walker(src)
+    assert offenders, "walker failed to flag an AugAssign-extended path"
+    assert "grow" in offenders[0]
+
+
+def test_walker_flags_walrus_overwriting_path() -> None:
+    """``(path := user)`` after a safe bootstrap must fail closed."""
+    src = (
+        "class C:\n"
+        "    async def w(self, user):\n"
+        "        path = f'/v5/x'\n"
+        "        if (path := user):\n"
+        "            return await self.get(path)\n"
+        "        return None\n"
+    )
+    offenders = _run_walker(src)
+    assert offenders, "walker failed to flag a walrus-overwritten path"
+
+
+def test_walker_does_not_double_walk_nested_async_def() -> None:
+    """A nested AsyncFunctionDef must not produce a spurious offender.
+
+    ``ast.walk(tree)`` yields nested AsyncFunctionDefs as siblings of the
+    outer one. Without scope isolation the inner ``self.get(path)`` would
+    be evaluated *also* against the outer method's locals (where ``path``
+    isn't bound) → spurious offender → CI breakage on a benign refactor.
+    """
+    src = (
+        "class C:\n"
+        "    async def outer(self, x):\n"
+        "        async def inner():\n"
+        "            path = f'/v5/x/{x}'\n"
+        "            return await self.get(path)\n"
+        "        return await inner()\n"
+    )
+    offenders = _run_walker(src)
+    assert not offenders, f"walker double-walked nested async def: {offenders}"
+
+
+def test_walker_flags_unsafe_call_in_nested_async_def() -> None:
+    """Inverse of the previous: an unsafe nested call must still be caught.
+
+    Scope isolation must not become 'silently skip nested defs' — the inner
+    call is still inside a class method body once we recurse into nested
+    function defs separately.
+    """
+    src = (
+        "class C:\n"
+        "    async def outer(self, x):\n"
+        "        async def inner(self_, p):\n"
+        "            return await self_.get(p)\n"
+        "        return await inner(self, x)\n"
+    )
+    # Nested async defs aren't enumerated by _toplevel_methods (they live
+    # inside outer's body, not directly inside the class), so the walker
+    # neither passes nor flags them. That's documented limitation #74. For
+    # this PR we only assert no DOUBLE-WALK false positive — no claim about
+    # full coverage of nested-helper calls.
+    offenders = _run_walker(src)
+    # outer() makes no self.<http>() call, so the walker reports nothing.
+    assert offenders == []
