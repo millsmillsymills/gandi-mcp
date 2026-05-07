@@ -75,7 +75,7 @@ def _build_lifespan(config: GandiConfig):  # type: ignore[no-untyped-def]
         context = ServerContext(config=config)
 
         if not config.authenticated:
-            logger.error("Gandi tools disabled: GANDI_TOKEN not configured")
+            logger.error("Gandi tools disabled: API credential not configured (see README for the env var)")
             _disable_all_tools(server)
             yield context
             return

@@ -60,7 +60,7 @@ class TestLifespanStartupBranches:
         with caplog.at_level("ERROR"):
             async with lifespan(server) as context:
                 assert context.client is None
-        assert any("GANDI_TOKEN not configured" in r.message for r in caplog.records)
+        assert any("API credential not configured" in r.message for r in caplog.records)
         # No network calls should have happened — respx isn't mounted, so a
         # real attempt would try to hit api.gandi.net and succeed-or-fail
         # unpredictably. The absence of respx is itself the assertion.
