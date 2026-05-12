@@ -92,15 +92,14 @@ For each survivor, ask:
 | Module | Mutants | Survived | No-tests | Notes |
 |---|---:|---:|---:|---|
 | `clients/base.py` | (large) | 59 | 0 | Most survivors are `__init__` defaults and `_request` retry-config branches; tests assert behavior, not constructor internals. |
-| `errors.py` | 42 | 11 | 0 | `handle_client_error` survivors are mostly the message-string mutants (the typed exception is asserted, the user-facing string isn't). |
+| `errors.py` | 42 | 0 | 0 | 100 % kill rate. Every `handle_client_error` message substring + every typed-exception `__init__` is pinned. |
 | `server.py` | 58 | 35 | 0 | Many survivors live in `_classify_startup_error` and `create_server`; the lifespan tests assert the surfaced exception type, not the intermediate string-building. |
 | `tools/_common.py` | 18 | 2 | 0 | 88.9 % kill rate. Two survivors target the user-facing message strings in `assert_readwrite` / `assert_purchases_allowed` (#84 covers the same pattern in `errors.py`). |
-| **Total** | **306** | **107** | **0** | **65.0 % kill rate overall.** |
+| **Total** | **306** | **96** | **0** | **68.6 % kill rate overall.** |
 
 Open follow-ups (kill remaining survivors on a per-module basis):
 
 - #83 — `clients/base.py` survivors
-- #84 — `errors.py` survivors
 - #85 — `server.py` survivors
 
 CI integration of mutation testing is deferred — runs take long enough that gating on them would slow PRs significantly.
