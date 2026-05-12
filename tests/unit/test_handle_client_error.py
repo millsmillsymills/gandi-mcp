@@ -144,10 +144,15 @@ class TestTimeoutMessage:
 
 
 class TestConnectionErrorMessage:
-    def test_message_includes_network_check_hint(self) -> None:
-        """The hint points operators at the Gandi hostname."""
+    def test_message_starts_with_connection_failed(self) -> None:
+        """The connection-error message leads with the canonical label."""
         tool_error = _raise(GandiConnectionError("dns lookup failed"))
-        assert "api.gandi.net" in str(tool_error)
+        assert str(tool_error).startswith("Connection failed:")
+
+    def test_message_includes_network_check_hint(self) -> None:
+        """The hint directs operators to check network connectivity."""
+        tool_error = _raise(GandiConnectionError("dns lookup failed"))
+        assert "Check network connectivity" in str(tool_error)
 
 
 class TestReadOnlyMessage:
