@@ -34,7 +34,7 @@ def redact_response(response: dict[str, Any]) -> dict[str, Any]:
     body_container = response.get("body")
     if not isinstance(body_container, dict) or "string" not in body_container:
         return response
-    raw: bytes = body_container["string"]
+    raw: bytes = body_container["string"]  # at record time, VCR always delivers bytes here
     if not raw:
         return response
     try:
@@ -50,6 +50,8 @@ def redact_response(response: dict[str, Any]) -> dict[str, Any]:
 
 
 def _redact_path(obj: dict[str, Any], path: tuple[str, ...]) -> None:
+    if not path:
+        return
     cur: Any = obj
     for key in path[:-1]:
         if not isinstance(cur, dict) or key not in cur:

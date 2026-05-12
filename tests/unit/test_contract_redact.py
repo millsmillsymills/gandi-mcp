@@ -63,6 +63,12 @@ class TestRedactResponse:
         out = redact_response(resp)
         assert "body" not in out
 
+    def test_list_body_returned_unchanged(self) -> None:
+        raw_bytes = json.dumps([{"id": "a"}, {"id": "b"}]).encode("utf-8")
+        resp = {"body": {"string": raw_bytes}}
+        out = redact_response(resp)
+        assert json.loads(out["body"]["string"]) == [{"id": "a"}, {"id": "b"}]
+
     def test_pii_paths_constant_is_a_tuple_of_path_tuples(self) -> None:
         assert isinstance(PII_JSON_PATHS, tuple)
         assert all(isinstance(p, tuple) and all(isinstance(k, str) for k in p) for p in PII_JSON_PATHS)
