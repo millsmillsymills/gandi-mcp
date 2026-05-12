@@ -56,6 +56,7 @@ dev = [
     "pytest-rerunfailures>=15.0",
     "respx>=0.23.1",
     "hypothesis>=6.152.4",
+    "mutmut>=3.5.0",
     "ruff>=0.15.12",
     "ty>=0.0.34",
     "bandit[toml]>=1.9.4",
@@ -201,6 +202,34 @@ exclude_lines = [
     "@overload",
     "raise NotImplementedError",
     "\\.\\.\\.",
+]
+
+# =============================================================================
+# Mutmut — mutation testing (run locally; not in CI yet)
+# =============================================================================
+[tool.mutmut]
+paths_to_mutate = [
+    "src/gandi_mcp/clients/base.py",
+    "src/gandi_mcp/errors.py",
+    "src/gandi_mcp/server.py",
+    "src/gandi_mcp/tools/_common.py",
+]
+tests_dir = ["tests/unit/"]
+also_copy = [
+    "src/gandi_mcp/__init__.py",
+    "src/gandi_mcp/__main__.py",
+    "src/gandi_mcp/_logging.py",
+    "src/gandi_mcp/config.py",
+    "src/gandi_mcp/py.typed",
+    "src/gandi_mcp/clients/__init__.py",
+    "src/gandi_mcp/clients/gandi.py",
+    "src/gandi_mcp/tools/__init__.py",
+    "src/gandi_mcp/tools/billing.py",
+    "src/gandi_mcp/tools/certificate.py",
+    "src/gandi_mcp/tools/domain.py",
+    "src/gandi_mcp/tools/email.py",
+    "src/gandi_mcp/tools/livedns.py",
+    "src/gandi_mcp/tools/organization.py",
 ]
 
 # =============================================================================

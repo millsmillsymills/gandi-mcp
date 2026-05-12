@@ -44,6 +44,9 @@ dmypy.json
 # Ruff
 .ruff_cache/
 
+# Mutmut — generated mutant tree
+/mutants/
+
 # Environment variables
 .env
 .env.local
