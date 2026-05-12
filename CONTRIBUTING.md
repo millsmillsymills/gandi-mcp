@@ -108,3 +108,26 @@ Open follow-ups (kill remaining survivors on a per-module basis):
 - #83 — `clients/base.py` survivors
 
 CI integration of mutation testing is deferred — runs take long enough that gating on them would slow PRs significantly.
+
+### Equivalent mutants
+
+Survivors documented here are behaviourally equivalent to the original
+source — no test can kill them without inspecting the bytecode itself.
+Listed so reviewers don't waste a turn re-investigating each baseline.
+
+`clients/base.py`:
+
+- `_parse_json__mutmut_12` — drops `status_code=None` from the invalid-JSON
+  `GandiError(...)` call. The default value of `status_code` on
+  `GandiError.__init__` is already `None`, so passing it explicitly versus
+  omitting it produces the same exception state.
+- `get__mutmut_8` / `post__mutmut_8` / `put__mutmut_8` / `patch__mutmut_8`
+  / `delete__mutmut_8` — change the literal method string from
+  upper-case (`"GET"`) to lower-case (`"get"`). The string passes through
+  three normalisers before it can be observed: `_request` does
+  `method.upper() in ("GET", "HEAD")` for the retry-class decision,
+  `httpx.Request` upper-cases `method` before sending, and
+  `GandiTimeoutError.__init__` upper-cases the `method` it stores on the
+  exception. Every observable surface (wire-method, retry policy,
+  timeout-error string) is identical for `"GET"` and `"get"`.
+
