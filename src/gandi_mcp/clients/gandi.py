@@ -15,8 +15,20 @@ def _seg(value: str) -> str:
     callers and may legitimately contain ``/``, ``.``, ``_``, wildcards, or
     other characters that would otherwise shift into a different API path or
     query. ``safe=""`` encodes every reserved character including ``/``.
+
+    Lone surrogates are rejected with ``ValueError`` rather than passed to
+    ``urllib.parse.quote`` (which would raise ``UnicodeEncodeError`` deep
+    inside the call stack). MCP tool arguments are valid Python strings;
+    a lone surrogate in a path segment is a client-side encoding bug and
+    surfacing it loudly here gives a cleaner error than a UTF-8 traceback.
     """
-    return quote(value, safe="")
+    try:
+        return quote(value, safe="")
+    except UnicodeEncodeError as exc:
+        raise ValueError(
+            f"path segment contains an un-encodable character at position {exc.start}: "
+            f"{value[exc.start]!r} (surrogates and other non-UTF-8 codepoints are not allowed)"
+        ) from exc
 
 
 class GandiClient(BaseGandiClient):

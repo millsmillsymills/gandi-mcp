@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from urllib.parse import unquote
 
+import pytest
 from hypothesis import example, given
 from hypothesis import strategies as st
 
@@ -25,8 +26,14 @@ from gandi_mcp.clients.gandi import _seg
 SAFE_OUTPUT_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~%")
 CONTROL_CHARS = frozenset(chr(c) for c in range(32)) | {chr(127)}
 
+# Well-formed-Unicode strings (no lone surrogates). ``_seg`` raises
+# ``ValueError`` for surrogates; that path is covered by
+# :func:`test_seg_raises_on_lone_surrogate`. Every other property assumes a
+# valid Python string and tests the successful encoding contract.
+_VALID_TEXT = st.text(alphabet=st.characters(min_codepoint=0, max_codepoint=0x10FFFF, blacklist_categories=("Cs",)))
 
-@given(value=st.text())
+
+@given(value=_VALID_TEXT)
 @example(value="../../../etc/passwd")
 @example(value="example.com")
 @example(value="record/with/slash")
@@ -50,7 +57,7 @@ def test_seg_output_only_contains_safe_chars(value: str) -> None:
     assert not bad, f"unsafe chars {bad!r} survived in _seg({value!r}) = {encoded!r}"
 
 
-@given(value=st.text())
+@given(value=_VALID_TEXT)
 @example(value="\x00\x01\x1f")
 @example(value="\n\r\t")
 def test_seg_output_has_no_control_chars(value: str) -> None:
@@ -60,21 +67,36 @@ def test_seg_output_has_no_control_chars(value: str) -> None:
         assert ch not in CONTROL_CHARS, f"control char {ord(ch):#04x} survived in _seg({value!r}) = {encoded!r}"
 
 
-@given(value=st.text(alphabet=st.characters(min_codepoint=0, max_codepoint=0x10FFFF, blacklist_categories=("Cs",))))
+@given(value=_VALID_TEXT)
 def test_seg_output_is_ascii(value: str) -> None:
     """Encoded segments are pure ASCII — unicode must be percent-encoded.
 
-    Lone surrogates (``Cs`` category) are excluded: ``urllib.parse.quote``
-    re-encodes the string as UTF-8 first, and a lone surrogate raises
-    ``UnicodeEncodeError``. Real MCP path segments are valid Python strings
-    (no lone surrogates), so this property targets the well-formed-input
-    contract. See follow-up for the surrogate edge case.
+    Surrogates are handled separately by :func:`test_seg_raises_on_lone_surrogate`
+    because they are not legal UTF-8 and ``_seg`` rejects them with a typed
+    ``ValueError`` rather than encoding them. Restricting this property to
+    the well-formed-Unicode subset lets it focus on the encoding-coverage
+    invariant without entangling the error-path contract.
     """
     encoded = _seg(value)
     assert encoded.isascii(), f"non-ASCII survived in _seg({value!r}) = {encoded!r}"
 
 
-@given(value=st.text())
+@given(value=st.text(alphabet=st.characters(min_codepoint=0xD800, max_codepoint=0xDFFF), min_size=1))
+@example(value="\ud800")
+@example(value="\udfff")
+@example(value="prefix\ud800suffix")
+def test_seg_raises_on_lone_surrogate(value: str) -> None:
+    """Lone surrogates are not valid UTF-8 — ``_seg`` rejects them with a typed ``ValueError``.
+
+    Without this contract, ``urllib.parse.quote`` would raise a deep
+    ``UnicodeEncodeError`` from inside the stdlib, masking the fact that an
+    MCP caller passed an invalid path segment.
+    """
+    with pytest.raises(ValueError, match="un-encodable character"):
+        _seg(value)
+
+
+@given(value=_VALID_TEXT)
 @example(value="/")
 @example(value="?")
 @example(value="#")
@@ -85,7 +107,7 @@ def test_seg_is_roundtrippable(value: str) -> None:
     assert unquote(encoded) == value
 
 
-@given(value=st.text(min_size=1))
+@given(value=_VALID_TEXT.filter(lambda s: len(s) > 0))
 def test_seg_output_is_never_just_slash(value: str) -> None:
     """No input may produce a bare ``/`` that would collapse the URL.
 
