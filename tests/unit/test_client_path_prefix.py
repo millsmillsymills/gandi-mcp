@@ -122,6 +122,57 @@ def _is_self_extension(value: ast.expr, name: str) -> bool:
     return isinstance(first.value, ast.Name) and first.value.id == name
 
 
+def _is_seg_call(node: ast.expr) -> bool:
+    """``node`` is a call to the canonical ``_seg`` encoder.
+
+    Matches both the bare-name call ``_seg(x)`` and the (unused today, but
+    legal) attribute form ``gandi._seg(x)``. Anything else — including
+    ``urllib.parse.quote(x)``, ``f"...{x}..."`` chained inside the segment,
+    or ``str(x)`` — is rejected.
+    """
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    if isinstance(func, ast.Name) and func.id == "_seg":
+        return True
+    return isinstance(func, ast.Attribute) and func.attr == "_seg"
+
+
+def _joined_str_seg_wrapped(value: ast.JoinedStr, *, extension_self_ref: str | None = None) -> bool:
+    """Every ``FormattedValue`` inside ``value`` is wrapped in ``_seg(...)``.
+
+    A future method like ``f"/v5/domain/{fqdn}"`` (raw, un-encoded ``fqdn``)
+    would still satisfy the ``/v5/`` prefix check — but ``fqdn = "../../etc"``
+    could path-traverse off ``/v5/`` once the URL is resolved. This helper
+    pins the encoding-everywhere invariant the ``_seg`` helper exists to
+    enforce.
+
+    ``extension_self_ref`` permits the bootstrap-and-extend pattern in
+    :func:`livedns_list_records` where ``path = f"{path}/{_seg(name)}"`` —
+    the first ``{path}`` slot references an already-validated local of
+    that name. Pass the LHS name when validating an extension assignment;
+    pass ``None`` for direct call-argument validation (no self-reference
+    allowed there).
+    """
+    for index, part in enumerate(value.values):
+        if isinstance(part, ast.Constant):
+            continue
+        if not isinstance(part, ast.FormattedValue):
+            return False
+        expr = part.value
+        if _is_seg_call(expr):
+            continue
+        if (
+            extension_self_ref is not None
+            and index == 0
+            and isinstance(expr, ast.Name)
+            and expr.id == extension_self_ref
+        ):
+            continue
+        return False
+    return True
+
+
 def _own_calls(method: ast.AsyncFunctionDef | ast.FunctionDef) -> list[ast.Call]:
     """Yield every ``Call`` lexically inside ``method`` excluding nested defs.
 
@@ -180,21 +231,46 @@ def _own_assignments_to(method: ast.AsyncFunctionDef | ast.FunctionDef, name: st
     return found
 
 
-def _local_resolves_to_v5_prefix(method: ast.AsyncFunctionDef | ast.FunctionDef, name: str) -> bool:
-    """A local ``name`` resolves to a ``/v5/``-prefixed string.
+def _assignment_seg_wrapped(value: ast.expr, name: str) -> bool:
+    """An assignment RHS for local ``name`` has every interpolated slot ``_seg``-wrapped.
 
-    Requires at least one bootstrap assignment that begins with ``/v5/`` and
-    every other assignment to be either another bootstrap or an extension of
-    the same name (``f"{name}/..."``). Any AugAssign or walrus injection of
-    untrusted data is rejected — the sentinel ``Name("<unsafe>")`` placeholder
-    fails both the prefix and extension checks.
+    Bootstrap assignment (``path = f"/v5/livedns/domains/{_seg(fqdn)}/records"``):
+    every ``{expr}`` must be a ``_seg`` call (no self-reference allowed —
+    ``path`` isn't bound yet).
+
+    Extension assignment (``path = f"{path}/{_seg(name)}"``): the first
+    ``{expr}`` may be the local itself; every subsequent ``{expr}`` must be
+    a ``_seg`` call.
+
+    Non-f-string assignments (a string literal, the ``<unsafe>`` sentinel,
+    etc.) are handled by the existing prefix / extension checks — this
+    helper only inspects ``JoinedStr`` RHS values.
+    """
+    if not isinstance(value, ast.JoinedStr):
+        return True
+    if _is_self_extension(value, name):
+        return _joined_str_seg_wrapped(value, extension_self_ref=name)
+    return _joined_str_seg_wrapped(value, extension_self_ref=None)
+
+
+def _local_resolves_to_v5_prefix(method: ast.AsyncFunctionDef | ast.FunctionDef, name: str) -> bool:
+    """A local ``name`` resolves to a ``/v5/``-prefixed string with every segment encoded.
+
+    Requires at least one bootstrap assignment that begins with ``/v5/``, every
+    other assignment to be a bootstrap or an extension of the same name, AND
+    every f-string assignment to have every ``{expr}`` slot wrapped in
+    ``_seg(...)`` (or, in extension form, a self-reference in the first slot
+    only). Any AugAssign or walrus injection of untrusted data is rejected —
+    the sentinel ``Name("<unsafe>")`` placeholder fails the prefix and
+    extension checks alike.
     """
     assignments = _own_assignments_to(method, name)
     if not assignments:
         return False
     has_bootstrap = any(_starts_with_prefix(v) for v in assignments)
-    all_ok = all(_starts_with_prefix(v) or _is_self_extension(v, name) for v in assignments)
-    return has_bootstrap and all_ok
+    all_shape_ok = all(_starts_with_prefix(v) or _is_self_extension(v, name) for v in assignments)
+    all_seg_wrapped = all(_assignment_seg_wrapped(v, name) for v in assignments)
+    return has_bootstrap and all_shape_ok and all_seg_wrapped
 
 
 def _path_arg_is_safe(
@@ -207,7 +283,10 @@ def _path_arg_is_safe(
     if arg is None:
         return False
     if _starts_with_prefix(arg):
-        return True
+        # Direct f-string call argument — no self-reference allowed (the
+        # bootstrap-and-extend pattern lives in a local variable, not in
+        # the call site).
+        return not isinstance(arg, ast.JoinedStr) or _joined_str_seg_wrapped(arg, extension_self_ref=None)
     if isinstance(arg, ast.Name):
         return _local_resolves_to_v5_prefix(method, arg.id)
     return False
@@ -273,6 +352,20 @@ def test_prefix_helper_rejects_attacker_fstring() -> None:
 
 
 def test_local_var_extension_resolves() -> None:
+    """Bootstrap + extension with every interpolated slot wrapped in ``_seg``."""
+    src = (
+        "async def m(self):\n"
+        '    path = f"/v5/livedns/{_seg(x)}"\n'
+        '    path = f"{path}/extra"\n'
+        "    return await self.get(path)\n"
+    )
+    method = ast.parse(src).body[0]
+    assert isinstance(method, ast.AsyncFunctionDef)
+    assert _local_resolves_to_v5_prefix(method, "path")
+
+
+def test_local_var_extension_rejects_raw_interpolation() -> None:
+    """The same bootstrap-and-extend pattern but with a raw ``{x}`` is now flagged."""
     src = (
         "async def m(self):\n"
         '    path = f"/v5/livedns/{x}"\n'
@@ -281,7 +374,7 @@ def test_local_var_extension_resolves() -> None:
     )
     method = ast.parse(src).body[0]
     assert isinstance(method, ast.AsyncFunctionDef)
-    assert _local_resolves_to_v5_prefix(method, "path")
+    assert not _local_resolves_to_v5_prefix(method, "path")
 
 
 def test_local_var_without_bootstrap_fails() -> None:
@@ -468,3 +561,112 @@ def test_walker_flags_self_client_get() -> None:
     src = "class C:\n    async def leak(self):\n        return await self._client.get('https://evil.example/x')\n"
     offenders = _run_walker(src)
     assert offenders, "walker failed to flag self._client.get()"
+
+
+# ── #76: every interpolated path segment must be _seg()-wrapped ────────────
+
+
+def test_walker_flags_raw_fstring_interpolation() -> None:
+    """``self.get(f'/v5/domain/{fqdn}')`` with a raw param must be flagged.
+
+    The literal prefix check passes (the f-string starts with ``/v5/``), but
+    a ``fqdn = "../../../etc"`` would traverse off ``/v5/`` once the URL
+    resolves. The walker now insists every ``{expr}`` slot is wrapped in
+    ``_seg(...)``.
+    """
+    src = 'class C:\n    async def lookup(self, fqdn):\n        return await self.get(f"/v5/domain/{fqdn}")\n'
+    offenders = _run_walker(src)
+    assert offenders, "walker failed to flag raw f-string interpolation"
+    assert "lookup" in offenders[0]
+
+
+def test_walker_accepts_seg_wrapped_fstring_interpolation() -> None:
+    """The same call with ``_seg(fqdn)`` is the canonical safe pattern — accept."""
+    src = 'class C:\n    async def lookup(self, fqdn):\n        return await self.get(f"/v5/domain/{_seg(fqdn)}")\n'
+    assert _run_walker(src) == []
+
+
+def test_walker_flags_fstring_with_one_seg_one_raw() -> None:
+    """Mixed: one slot wrapped, one raw — must still be flagged.
+
+    Catches the partial-fix case where a contributor wraps only the first
+    parameter and forgets the second.
+    """
+    src = (
+        "class C:\n"
+        "    async def lookup(self, fqdn, name):\n"
+        '        return await self.get(f"/v5/domain/{_seg(fqdn)}/records/{name}")\n'
+    )
+    offenders = _run_walker(src)
+    assert offenders, "walker failed to flag the mixed-slot case"
+
+
+def test_walker_flags_quote_instead_of_seg() -> None:
+    """``urllib.parse.quote(x)`` looks similar but bypasses the canonical helper.
+
+    Centralising encoding through ``_seg`` is what lets a single change adjust
+    the encoding policy. A direct ``quote(x)`` would drift; flag it.
+    """
+    src = (
+        "from urllib.parse import quote\n"
+        "class C:\n"
+        "    async def lookup(self, fqdn):\n"
+        '        return await self.get(f"/v5/domain/{quote(fqdn)}")\n'
+    )
+    offenders = _run_walker(src)
+    assert offenders, "walker failed to flag urllib.parse.quote() in place of _seg"
+
+
+def test_walker_accepts_bootstrap_extend_pattern() -> None:
+    """The :func:`livedns_list_records` pattern remains valid: bootstrap with ``_seg``-wrapped
+    slots, then extend the local with another ``_seg``-wrapped slot."""
+    src = (
+        "class C:\n"
+        "    async def lookup(self, fqdn, name):\n"
+        '        path = f"/v5/livedns/domains/{_seg(fqdn)}/records"\n'
+        "        if name:\n"
+        '            path = f"{path}/{_seg(name)}"\n'
+        "        return await self.get(path)\n"
+    )
+    assert _run_walker(src) == []
+
+
+def test_walker_flags_extension_with_raw_slot() -> None:
+    """An extension whose second slot is raw must be flagged even with a safe bootstrap."""
+    src = (
+        "class C:\n"
+        "    async def lookup(self, fqdn, name):\n"
+        '        path = f"/v5/livedns/domains/{_seg(fqdn)}/records"\n'
+        '        path = f"{path}/{name}"\n'
+        "        return await self.get(path)\n"
+    )
+    offenders = _run_walker(src)
+    assert offenders, "walker failed to flag raw extension slot"
+
+
+def test_walker_flags_bootstrap_with_raw_slot() -> None:
+    """A bootstrap with a raw slot is flagged even though the prefix is correct."""
+    src = (
+        "class C:\n"
+        "    async def lookup(self, fqdn):\n"
+        '        path = f"/v5/livedns/domains/{fqdn}/records"\n'
+        "        return await self.get(path)\n"
+    )
+    offenders = _run_walker(src)
+    assert offenders, "walker failed to flag raw bootstrap slot"
+
+
+def test_joined_str_seg_wrapped_helper_basic() -> None:
+    """Unit-level coverage of the helper for the documented permitted shapes."""
+    safe = ast.parse('f"/v5/{_seg(x)}/y/{_seg(z)}"', mode="eval").body
+    assert isinstance(safe, ast.JoinedStr)
+    assert _joined_str_seg_wrapped(safe, extension_self_ref=None)
+
+    unsafe = ast.parse('f"/v5/{x}/{_seg(z)}"', mode="eval").body
+    assert isinstance(unsafe, ast.JoinedStr)
+    assert not _joined_str_seg_wrapped(unsafe, extension_self_ref=None)
+
+    extension = ast.parse('f"{path}/{_seg(y)}"', mode="eval").body
+    assert isinstance(extension, ast.JoinedStr)
+    assert _joined_str_seg_wrapped(extension, extension_self_ref="path")
+    assert not _joined_str_seg_wrapped(extension, extension_self_ref=None)
