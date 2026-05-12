@@ -2,15 +2,23 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
 from fastmcp import FastMCP
+from hypothesis import settings
 
 from gandi_mcp.clients.gandi import GandiClient
 from gandi_mcp.config import GandiConfig, GandiMode
+
+# Hypothesis profiles: dev keeps default randomisation; CI derandomises so a
+# property failure reproduces from the captured seed without re-rolling.
+settings.register_profile("ci", derandomize=True, deadline=None)
+settings.register_profile("dev", deadline=None)
+settings.load_profile("ci" if os.environ.get("CI") else "dev")
 
 
 @dataclass
