@@ -155,7 +155,14 @@ class BaseGandiClient:
         the server may have processed the write before the response was lost,
         and a retry would cause double-execution (a particularly bad outcome
         for purchase-bearing endpoints).
+
+        ``path`` must start with ``/v5/``. httpx would otherwise treat an
+        absolute URL as a base-URL override and forward the
+        ``Authorization: Bearer <PAT>`` header to an arbitrary host — same
+        invariant the static walker pins.
         """
+        if not path.startswith("/v5/"):
+            raise ValueError(f"client request path must start with '/v5/': {path!r}")
         kwargs["params"] = self._merge_sharing_id(kwargs.get("params"))
 
         retry_on: tuple[type[BaseException], ...] = (httpx.ConnectError,)
