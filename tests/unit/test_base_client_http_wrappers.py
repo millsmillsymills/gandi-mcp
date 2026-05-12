@@ -135,7 +135,8 @@ class TestParseJsonResponseIsForwarded:
             mock.put("/v5/domain/domains/example.com/authinfo").mock(
                 return_value=httpx.Response(200, json={"authinfo": "secret-token"}),
             )
-            assert await client.put("/v5/domain/domains/example.com/authinfo") == {"authinfo": "secret-token"}
+            result = await client.put("/v5/domain/domains/example.com/authinfo")
+            assert result == {"authinfo": "secret-token"}
 
     @pytest.mark.asyncio
     async def test_patch_returns_parsed_body(self) -> None:
@@ -155,7 +156,8 @@ class TestParseJsonResponseIsForwarded:
             mock.get("/v5/organization/user-info").mock(
                 return_value=httpx.Response(200, json={"username": "demo"}),
             )
-            assert await client.get("/v5/organization/user-info") == {"username": "demo"}
+            result = await client.get("/v5/organization/user-info")
+            assert result == {"username": "demo"}
 
     @pytest.mark.asyncio
     async def test_post_returns_parsed_body(self) -> None:
@@ -163,7 +165,8 @@ class TestParseJsonResponseIsForwarded:
             mock.post("/v5/domain/domains").mock(
                 return_value=httpx.Response(201, json={"id": "new-domain"}),
             )
-            assert await client.post("/v5/domain/domains", json={}) == {"id": "new-domain"}
+            result = await client.post("/v5/domain/domains", json={})
+            assert result == {"id": "new-domain"}
 
     @pytest.mark.asyncio
     async def test_delete_returns_parsed_body(self) -> None:
@@ -171,7 +174,8 @@ class TestParseJsonResponseIsForwarded:
             mock.delete("/v5/domain/domains/example.com").mock(
                 return_value=httpx.Response(200, json={"message": "deleted"}),
             )
-            assert await client.delete("/v5/domain/domains/example.com") == {"message": "deleted"}
+            result = await client.delete("/v5/domain/domains/example.com")
+            assert result == {"message": "deleted"}
 
 
 class TestMethodOnTheWire:
