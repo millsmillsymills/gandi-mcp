@@ -51,3 +51,42 @@ class TestMergeSharingId:
             assert route.called
             assert route.calls.last.request.url.params["sharing_id"] == "org-uuid"
         await client.close()
+
+
+class TestRequestPathPrefix:
+    """Runtime defense-in-depth for the ``/v5/`` invariant (closes #74).
+
+    Complements the static walker in ``test_client_path_prefix.py``: a
+    refactor that slips past the AST check would still hit ``ValueError``
+    here before httpx ever sees an absolute URL.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "bad_path",
+        [
+            "https://evil.example/leak",
+            "/api/v5/foo",
+            "v5/foo",
+            "",
+            "/etc/passwd",
+        ],
+    )
+    async def test_request_rejects_non_v5_path(self, bad_path: str) -> None:
+        """Any path not starting with ``/v5/`` raises before reaching httpx."""
+        client = BaseGandiClient(base_url="https://api.gandi.net", token="t", max_retries=1)
+        try:
+            with pytest.raises(ValueError, match="must start with '/v5/'"):
+                await client._request("GET", bad_path)
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_request_accepts_v5_path(self) -> None:
+        """Sanity: a legitimate /v5/ path is unaffected by the guard."""
+        client = BaseGandiClient(base_url="https://api.gandi.net", token="t", max_retries=1)
+        with respx.mock(base_url="https://api.gandi.net") as mock:
+            mock.get("/v5/organization/user-info").mock(return_value=httpx.Response(200, json={}))
+            response = await client._request("GET", "/v5/organization/user-info")
+            assert response.status_code == 200
+        await client.close()
