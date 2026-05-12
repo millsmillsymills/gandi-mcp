@@ -93,13 +93,12 @@ For each survivor, ask:
 |---|---:|---:|---:|---|
 | `clients/base.py` | (large) | 59 | 0 | Most survivors are `__init__` defaults and `_request` retry-config branches; tests assert behavior, not constructor internals. |
 | `errors.py` | 42 | 0 | 0 | 100 % kill rate. Every `handle_client_error` message substring + every typed-exception `__init__` is pinned. |
-| `server.py` | 58 | 35 | 0 | Many survivors live in `_classify_startup_error` and `create_server`; the lifespan tests assert the surfaced exception type, not the intermediate string-building. |
-| `tools/_common.py` | 18 | 2 | 0 | 88.9 % kill rate. Two survivors target the user-facing message strings in `assert_readwrite` / `assert_purchases_allowed` (#84 covers the same pattern in `errors.py`). |
-| **Total** | **306** | **96** | **0** | **68.6 % kill rate overall.** |
+| `server.py` | 58 | 3 | 0 | 94.8 % kill rate. The three remaining survivors are `create_server` lifespan-wiring mutants (`lifespan=None`, `lifespan=_build_lifespan(None)`, removing the kwarg entirely). Killing them needs an integration test that actually invokes the FastMCP-wired lifespan — out of scope for the unit suite. |
+| `tools/_common.py` | 18 | 2 | 0 | 88.9 % kill rate. Two survivors target the user-facing message strings in `assert_readwrite` / `assert_purchases_allowed`. |
+| **Total** | **306** | **64** | **0** | **79.1 % kill rate overall.** |
 
 Open follow-ups (kill remaining survivors on a per-module basis):
 
 - #83 — `clients/base.py` survivors
-- #85 — `server.py` survivors
 
 CI integration of mutation testing is deferred — runs take long enough that gating on them would slow PRs significantly.
