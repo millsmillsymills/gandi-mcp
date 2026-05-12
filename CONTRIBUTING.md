@@ -87,6 +87,12 @@ For each survivor, ask:
 2. **Does it expose a real test gap?** Add a focused unit test that fails against the mutant. Prefer asserting the specific behavior — extending an existing test with another `assert` is often enough.
 3. **Is the surviving code dead?** Delete it.
 
+### Equivalent mutants
+
+These mutants are listed because the mutmut harness itself makes them unkillable through the public API; they are not actual test gaps.
+
+- `gandi_mcp.clients.base.xǁBaseGandiClientǁ__init____mutmut_1` (`timeout: int = 30` -> `timeout: int = 31`) and `__init____mutmut_2` (`max_retries: int = 3` -> `max_retries: int = 4`): mutmut's trampoline rewrites `__init__` to forward `kwargs={'timeout': timeout, 'max_retries': max_retries, ...}` from the *outer* `__init__` signature into the mutant function. The outer defaults (30 / 3) are baked into the wrapper, so the mutant function's own default value is never used. No call site that goes through `BaseGandiClient(...)` can observe the mutated default — these are architecturally equivalent under mutmut, not real test gaps.
+
 ### Current baseline (2026-05-12)
 
 | Module | Mutants | Survived | No-tests | Notes |
