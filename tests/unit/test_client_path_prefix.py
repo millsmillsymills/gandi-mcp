@@ -1,4 +1,4 @@
-"""AST invariant: every GandiClient request path starts with ``/v5/`` (closes #41).
+"""AST invariant: every GandiClient request path starts with ``/v5/`` (closes #41, #74).
 
 httpx follows an absolute URL passed as the request ``path`` and overrides
 ``base_url`` — so an attacker- or LLM-controlled absolute path would carry the
@@ -8,6 +8,12 @@ httpx follows an absolute URL passed as the request ``path`` and overrides
 property statically so a regression — for example, a method like
 ``async def custom(self, path: str) -> Any: return await self.get(path)`` —
 fails CI rather than reaching production.
+
+Closes #74: the walker also catches a future ``self.request(method, path, ...)``
+helper (path is the second positional arg or the ``path=`` kwarg) and flags
+any escape to the underlying transport (``self._client.<anything>(...)``).
+The base client's ``_request`` runs a defense-in-depth runtime check on
+``path`` so that a refactor that slips past the walker still fails closed.
 """
 
 from __future__ import annotations
@@ -18,6 +24,7 @@ import inspect
 from gandi_mcp.clients import gandi
 
 HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete"})
+REQUEST_METHOD = "request"
 PATH_PREFIX = "/v5/"
 
 
@@ -35,6 +42,60 @@ def _is_self_http_call(node: ast.AST) -> bool:
     if not (isinstance(func.value, ast.Name) and func.value.id == "self"):
         return False
     return func.attr in HTTP_METHODS
+
+
+def _is_self_request_call(node: ast.AST) -> bool:
+    """True if ``node`` is ``self.request(method, path, ...)``.
+
+    A low-level helper would land here. Path is the second positional arg or
+    the ``path=`` kwarg — :func:`_path_arg_for_call` extracts whichever is
+    present.
+    """
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    if not isinstance(func, ast.Attribute):
+        return False
+    if not (isinstance(func.value, ast.Name) and func.value.id == "self"):
+        return False
+    return func.attr == REQUEST_METHOD
+
+
+def _is_self_client_escape(node: ast.AST) -> bool:
+    """True if ``node`` is ``self._client.<anything>(...)``.
+
+    Any direct touch of the underlying ``httpx.AsyncClient`` from outside the
+    base client bypasses the prefix check entirely (``send``, ``build_request``,
+    or even ``self._client.get(absolute_url)``). The walker flags every shape
+    so this regression class can't slip in via a different verb.
+    """
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    if not isinstance(func, ast.Attribute):
+        return False
+    return (
+        isinstance(func.value, ast.Attribute)
+        and isinstance(func.value.value, ast.Name)
+        and func.value.value.id == "self"
+        and func.value.attr == "_client"
+    )
+
+
+def _path_arg_for_call(call: ast.Call, *, is_request: bool) -> ast.expr | None:
+    """Return the path argument for an HTTP-shaped call, or ``None`` if missing.
+
+    For verb wrappers (``get`` / ``post`` / …) the path is positional arg 0
+    or kwarg ``path=``. For ``request`` the path is positional arg 1
+    (``method`` is arg 0) or kwarg ``path=``.
+    """
+    positional_index = 1 if is_request else 0
+    if len(call.args) > positional_index:
+        return call.args[positional_index]
+    for kw in call.keywords:
+        if kw.arg == "path":
+            return kw.value
+    return None
 
 
 def _starts_with_prefix(value: ast.expr) -> bool:
@@ -136,10 +197,15 @@ def _local_resolves_to_v5_prefix(method: ast.AsyncFunctionDef | ast.FunctionDef,
     return has_bootstrap and all_ok
 
 
-def _path_arg_is_safe(method: ast.AsyncFunctionDef | ast.FunctionDef, call: ast.Call) -> bool:
-    if not call.args:
+def _path_arg_is_safe(
+    method: ast.AsyncFunctionDef | ast.FunctionDef,
+    call: ast.Call,
+    *,
+    is_request: bool = False,
+) -> bool:
+    arg = _path_arg_for_call(call, is_request=is_request)
+    if arg is None:
         return False
-    arg = call.args[0]
     if _starts_with_prefix(arg):
         return True
     if isinstance(arg, ast.Name):
@@ -162,16 +228,25 @@ def _toplevel_methods(tree: ast.Module) -> list[ast.AsyncFunctionDef | ast.Funct
 
 
 def test_all_client_paths_start_with_v5() -> None:
-    """Every ``self.<http>(path, ...)`` call uses a ``/v5/``-prefixed path."""
+    """Every client-side request call uses a ``/v5/``-prefixed path.
+
+    Covers the verb wrappers (``self.<http>(path, ...)``), the ``self.request``
+    helper if one is ever added, and any direct escape to the underlying
+    transport (``self._client.<anything>(...)``).
+    """
     tree = ast.parse(inspect.getsource(gandi))
     offenders: list[str] = []
     checked = 0
     for method in _toplevel_methods(tree):
         for call in _own_calls(method):
-            if not _is_self_http_call(call):
+            if _is_self_client_escape(call):
+                offenders.append(f"{method.name}: {ast.unparse(call)} (direct _client access is forbidden)")
+                continue
+            is_request = _is_self_request_call(call)
+            if not (is_request or _is_self_http_call(call)):
                 continue
             checked += 1
-            if not _path_arg_is_safe(method, call):
+            if not _path_arg_is_safe(method, call, is_request=is_request):
                 offenders.append(f"{method.name}: {ast.unparse(call)}")
     assert not offenders, "client paths missing /v5/ prefix:\n  " + "\n  ".join(offenders)
     assert checked > 0, "AST walker found no self.<http>() calls — test is no-op"
@@ -225,9 +300,13 @@ def _run_walker(src: str) -> list[str]:
     offenders: list[str] = []
     for method in _toplevel_methods(tree):
         for call in _own_calls(method):
-            if not _is_self_http_call(call):
+            if _is_self_client_escape(call):
+                offenders.append(f"{method.name}: {ast.unparse(call)} (direct _client access is forbidden)")
                 continue
-            if not _path_arg_is_safe(method, call):
+            is_request = _is_self_request_call(call)
+            if not (is_request or _is_self_http_call(call)):
+                continue
+            if not _path_arg_is_safe(method, call, is_request=is_request):
                 offenders.append(f"{method.name}: {ast.unparse(call)}")
     return offenders
 
@@ -322,3 +401,70 @@ def test_walker_flags_unsafe_call_in_nested_async_def() -> None:
     offenders = _run_walker(src)
     # outer() makes no self.<http>() call, so the walker reports nothing.
     assert offenders == []
+
+
+# ── #74: self.request(...) coverage ────────────────────────────────────────
+
+
+def test_walker_flags_self_request_with_unsafe_path() -> None:
+    """``self.request('GET', '/leak')`` must be flagged — same risk as ``self.get``."""
+    src = "class C:\n    async def custom(self):\n        return await self.request('GET', '/leak')\n"
+    offenders = _run_walker(src)
+    assert offenders, "walker failed to flag self.request with non-/v5/ literal"
+    assert "custom" in offenders[0]
+
+
+def test_walker_flags_self_request_with_parameter_path() -> None:
+    """``self.request('GET', user_path)`` must be flagged when ``user_path`` is a param."""
+    src = "class C:\n    async def custom(self, user_path):\n        return await self.request('GET', user_path)\n"
+    offenders = _run_walker(src)
+    assert offenders, "walker failed to flag self.request with parameter path"
+
+
+def test_walker_accepts_self_request_with_v5_literal() -> None:
+    """``self.request('GET', '/v5/foo')`` is the same shape as a verb wrapper — accept."""
+    src = "class C:\n    async def custom(self):\n        return await self.request('GET', '/v5/foo')\n"
+    assert _run_walker(src) == []
+
+
+def test_walker_accepts_self_request_with_v5_kwarg() -> None:
+    """``self.request('GET', path='/v5/foo')`` — kwarg form must resolve too."""
+    src = "class C:\n    async def custom(self):\n        return await self.request('GET', path='/v5/foo')\n"
+    assert _run_walker(src) == []
+
+
+def test_walker_flags_self_request_with_unsafe_kwarg_path() -> None:
+    """``self.request('GET', path=user_path)`` with a non-/v5/ kwarg must be flagged."""
+    src = "class C:\n    async def custom(self, user_path):\n        return await self.request('GET', path=user_path)\n"
+    offenders = _run_walker(src)
+    assert offenders, "walker failed to flag self.request with unsafe path kwarg"
+
+
+# ── #74: self._client.* escape hatches ─────────────────────────────────────
+
+
+def test_walker_flags_self_client_send() -> None:
+    """``self._client.send(...)`` bypasses the wrapper entirely — always flagged."""
+    src = "class C:\n    async def leak(self, req):\n        return await self._client.send(req)\n"
+    offenders = _run_walker(src)
+    assert offenders, "walker failed to flag self._client.send()"
+    assert "leak" in offenders[0]
+    assert "direct _client access" in offenders[0]
+
+
+def test_walker_flags_self_client_build_request() -> None:
+    """``self._client.build_request(...)`` is also forbidden — same escape class."""
+    src = (
+        "class C:\n"
+        "    async def leak(self):\n"
+        "        return self._client.build_request('GET', 'https://evil.example/x')\n"
+    )
+    offenders = _run_walker(src)
+    assert offenders, "walker failed to flag self._client.build_request()"
+
+
+def test_walker_flags_self_client_get() -> None:
+    """``self._client.get(absolute_url)`` is even more obviously a leak — flagged."""
+    src = "class C:\n    async def leak(self):\n        return await self._client.get('https://evil.example/x')\n"
+    offenders = _run_walker(src)
+    assert offenders, "walker failed to flag self._client.get()"
