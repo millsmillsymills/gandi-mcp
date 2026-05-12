@@ -103,9 +103,9 @@ Survivors documented here are behaviourally equivalent to the original source â€
 |---|---:|---:|---:|---|
 | `clients/base.py` | (large) | 59 | 0 | Most survivors are `__init__` defaults and `_request` retry-config branches; tests assert behavior, not constructor internals. |
 | `errors.py` | 42 | 0 | 0 | 100 % kill rate. Every `handle_client_error` message substring + every typed-exception `__init__` is pinned. |
-| `server.py` | 58 | 3 | 0 | 94.8 % kill rate. The three remaining survivors are `create_server` lifespan-wiring mutants (`lifespan=None`, `lifespan=_build_lifespan(None)`, removing the kwarg entirely). Killing them needs an integration test that actually invokes the FastMCP-wired lifespan â€” out of scope for the unit suite. |
-| `tools/_common.py` | 18 | 2 | 0 | 88.9 % kill rate. Two survivors target the user-facing message strings in `assert_readwrite` / `assert_purchases_allowed`. |
-| **Total** | **306** | **64** | **0** | **79.1 % kill rate overall.** |
+| `server.py` | 58 | 0 | 0 | 100 % kill rate. The three former `create_server` lifespan-wiring survivors (`lifespan=None`, `lifespan=_build_lifespan(None)`, kwarg removed) are now pinned via `TestCreateServerLifespanWiring` in `tests/unit/test_server_messages.py`. |
+| `tools/_common.py` | 18 | 0 | 0 | 100 % kill rate. The two message-string survivors in `assert_readwrite` / `assert_purchases_allowed` are now pinned via `test_error_message_is_canonical` (exact-equality on the full f-string) in `tests/unit/test_tools_common.py`. |
+| **Total** | **306** | **59** | **0** | **80.7 % kill rate overall.** |
 
 Open follow-ups (kill remaining survivors on a per-module basis):
 
