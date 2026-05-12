@@ -111,6 +111,27 @@ class TestAssertReadwrite:
         with pytest.raises(GandiReadOnlyError, match="GANDI_MODE=readonly"):
             assert_readwrite(ctx, "any write")
 
+    def test_error_message_is_canonical(self, readonly_config) -> None:  # type: ignore[no-untyped-def]
+        """Pin the exact message verbatim — kills wrap / case / ``None`` mutations.
+
+        Substring matches survive a ``"XX...XX"`` wrap mutation because the
+        inner substring is preserved. Equality on the full f-string output
+        catches every variant, including ``GandiReadOnlyError(None)`` whose
+        ``str(exc)`` is ``"None"``.
+        """
+        ctx = _build_ctx(readonly_config)
+        with pytest.raises(GandiReadOnlyError) as exc_info:
+            assert_readwrite(ctx, "register domain")
+        assert str(exc_info.value) == "Cannot register domain in read-only mode (GANDI_MODE=readonly)"
+
+    def test_error_message_interpolates_action(self, readonly_config) -> None:  # type: ignore[no-untyped-def]
+        """The ``action`` argument is interpolated verbatim — two cases pin it."""
+        ctx = _build_ctx(readonly_config)
+        for action in ("delete mailbox", "transfer-out domain"):
+            with pytest.raises(GandiReadOnlyError) as exc_info:
+                assert_readwrite(ctx, action)
+            assert str(exc_info.value) == f"Cannot {action} in read-only mode (GANDI_MODE=readonly)"
+
 
 class TestAssertPurchasesAllowed:
     def test_noop_when_purchases_enabled(self, readwrite_with_purchases_config) -> None:  # type: ignore[no-untyped-def]
@@ -140,3 +161,27 @@ class TestAssertPurchasesAllowed:
         ctx = _build_ctx(readwrite_config)
         with pytest.raises(GandiPurchaseBlockedError, match="GANDI_ALLOW_PURCHASES"):
             assert_purchases_allowed(ctx, "register domain")
+
+    def test_error_message_is_canonical(self, readwrite_config) -> None:  # type: ignore[no-untyped-def]
+        """Pin the exact purchase-blocked message verbatim.
+
+        Substring matches (``"register domain"`` / ``"GANDI_ALLOW_PURCHASES"``)
+        survive ``"XX...XX"`` wrap mutations because the inner substring is
+        preserved. Equality on the full f-string catches every variant —
+        including ``GandiPurchaseBlockedError(None)`` which stringifies to
+        ``"None"``.
+        """
+        ctx = _build_ctx(readwrite_config)
+        with pytest.raises(GandiPurchaseBlockedError) as exc_info:
+            assert_purchases_allowed(ctx, "register domain")
+        assert str(exc_info.value) == (
+            "Cannot register domain — purchases are disabled (set GANDI_ALLOW_PURCHASES=true)"
+        )
+
+    def test_error_message_interpolates_action(self, readwrite_config) -> None:  # type: ignore[no-untyped-def]
+        """The ``action`` argument is interpolated verbatim — two cases pin it."""
+        ctx = _build_ctx(readwrite_config)
+        for action in ("renew domain", "create mailbox"):
+            with pytest.raises(GandiPurchaseBlockedError) as exc_info:
+                assert_purchases_allowed(ctx, action)
+            assert str(exc_info.value) == (f"Cannot {action} — purchases are disabled (set GANDI_ALLOW_PURCHASES=true)")

@@ -204,3 +204,71 @@ class TestLifespanDisablesGandiTagOnly:
                     "lifespan failed to disable gandi-tagged tools after auth failure"
                     f" (visible: {[t.name for t in gandi_tools]})"
                 )
+
+
+# ── create_server: lifespan is actually threaded through to FastMCP ────────
+
+
+class TestCreateServerLifespanWiring:
+    """``create_server`` must pass its built lifespan to ``FastMCP(lifespan=...)``.
+
+    Mutmut surfaced three survivors that all leave the runtime lifespan
+    misconfigured: ``lifespan=None``, ``lifespan=_build_lifespan(None)``, and
+    dropping the kwarg entirely (FastMCP falls back to its no-op
+    ``default_lifespan``). All three keep ``create_server`` returning a
+    server, so a test that inspects only the returned object's visibility
+    rules cannot tell them apart from the original.
+
+    Two assertions pin them:
+    1. ``mcp._lifespan is not default_lifespan`` — kills ``lifespan=None`` and
+       the kwarg-removed mutation; both leave the FastMCP-supplied no-op in
+       place.
+    2. Driving ``mcp._lifespan(mcp)`` actually accesses ``config.authenticated`` —
+       kills ``lifespan=_build_lifespan(None)`` because that closure's
+       ``config`` is ``None`` and the first attribute access raises
+       ``AttributeError`` before the lifespan can yield.
+    """
+
+    def test_lifespan_is_not_fastmcp_default(self) -> None:
+        from fastmcp.server.server import default_lifespan
+
+        server = create_server(_config())
+        assert server._lifespan is not default_lifespan, (
+            "create_server returned a server with FastMCP's default no-op lifespan; "
+            "the gandi-mcp lifespan was not wired through (mutation likely changed "
+            "the lifespan= kwarg to None or removed it)"
+        )
+
+    @pytest.mark.asyncio
+    async def test_lifespan_uses_supplied_config(self) -> None:
+        """Driving the wired lifespan must succeed with a real ``GandiConfig``.
+
+        With ``_build_lifespan(None)`` baked in, the first ``config.authenticated``
+        access inside the lifespan raises ``AttributeError`` on ``NoneType``,
+        which fails this test. The no-token path is used so we don't have to
+        mock the API — the lifespan short-circuits before any HTTP call.
+        """
+        config = _config(gandi_token=None, gandi_mode=GandiMode.READWRITE, gandi_allow_purchases=True)
+        server = create_server(config)
+        async with server._lifespan(server) as ctx:
+            # ServerContext.config must be the config we passed in — proves the
+            # closure captured the caller-supplied config, not None.
+            assert ctx.config is config
+
+    @pytest.mark.asyncio
+    async def test_lifespan_short_circuits_to_disabled_tools_on_no_token(self) -> None:
+        """End-to-end: a no-token config produces a server with no visible gandi tools.
+
+        Distinguishes ``lifespan=_build_lifespan(None)`` (which would raise
+        AttributeError before reaching ``disable``) from the original (which
+        cleanly disables every ``gandi``-tagged tool).
+        """
+        config = _config(gandi_token=None, gandi_mode=GandiMode.READWRITE, gandi_allow_purchases=True)
+        server = create_server(config)
+        async with server._lifespan(server):
+            visible = await server.list_tools()
+            gandi_tools = [t for t in visible if "gandi" in (t.tags or set())]
+            assert gandi_tools == [], (
+                f"create_server's wired lifespan failed to disable gandi tools on no-token startup "
+                f"(visible: {[t.name for t in gandi_tools]})"
+            )
