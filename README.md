@@ -134,6 +134,10 @@ uv run ty check src/gandi_mcp/
 # Unit tests
 uv run pytest tests/unit/ -v
 
+# Full suite with coverage (matches CI gate: >=85% total, >=70% tools/*.py, >=90% core)
+uv run pytest -m "not live" --cov=gandi_mcp --cov-report=term-missing --cov-report=json
+uv run python scripts/check_coverage_thresholds.py
+
 # Pre-commit hooks
 uv run pre-commit install
 ```
