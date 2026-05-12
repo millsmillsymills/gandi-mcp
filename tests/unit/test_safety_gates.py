@@ -172,6 +172,80 @@ def _function_calls_gate(
     return False
 
 
+def _is_gate_call(node: ast.AST, tree: ast.Module, canonical: str) -> bool:
+    """True if ``node`` is a ``Call`` resolving to the canonical gate ``canonical``.
+
+    Matches a bare-``Name`` call where the name resolves via :func:`_module_aliases`,
+    or a module-attribute call (``c.assert_readwrite(...)`` where ``c`` aliases
+    ``gandi_mcp.tools._common``). Shadowing is **not** applied here because the
+    caller has already pinned this specific call site — the question is "is this
+    exact node a gate call?" not "could some bound name reach the gate?".
+    """
+    if canonical not in CANONICAL_GATES:
+        raise ValueError(f"Unknown canonical gate name: {canonical!r}")
+    if not isinstance(node, ast.Call):
+        return False
+    name_aliases, module_aliases = _module_aliases(tree)
+    called = node.func
+    if isinstance(called, ast.Name) and called.id in name_aliases and name_aliases[called.id] == canonical:
+        return True
+    return (
+        isinstance(called, ast.Attribute)
+        and isinstance(called.value, ast.Name)
+        and called.value.id in module_aliases
+        and called.attr == canonical
+    )
+
+
+def _first_try(func: ast.AsyncFunctionDef | ast.FunctionDef) -> ast.Try | None:
+    """Return the first ``ast.Try`` statement in ``func.body``, or ``None``.
+
+    The documented convention is that a tool handler's body is a single ``try`` /
+    ``except``. A tool with no ``try`` block at all fails the first-stmt
+    invariant because the gate has no defined position relative to the wrapped
+    API call.
+    """
+    for stmt in func.body:
+        if isinstance(stmt, ast.Try):
+            return stmt
+    return None
+
+
+def _expected_gates_for_tags(tags: set[str]) -> list[str]:
+    """The required gate-call sequence at the head of a tool's first ``try`` block.
+
+    - Write-only tool: ``[assert_readwrite]``.
+    - Purchase tool: ``[assert_readwrite, assert_purchases_allowed]`` — the
+      readwrite check must come first so an operator hitting a purchase tool
+      in readonly mode sees the narrower "read-only" error, not "purchases
+      disabled" (per ``CLAUDE.md``'s "narrower error first" contract).
+    - Read tool: ``[]`` (no gate expected).
+    """
+    if PURCHASE_TAG in tags:
+        return [WRITE_ASSERT, PURCHASE_ASSERT]
+    if WRITE_TAG in tags:
+        return [WRITE_ASSERT]
+    return []
+
+
+def _gate_sequence_starting_try(try_node: ast.Try, tree: ast.Module, expected: list[str]) -> tuple[bool, str]:
+    """Verify ``try_node.body[0:N]`` is the expected gate-call sequence.
+
+    Returns ``(ok, reason)``. On mismatch, ``reason`` names the offending
+    statement so the test failure points the contributor at the right line.
+    """
+    body = try_node.body
+    if len(body) < len(expected):
+        return False, f"try body has only {len(body)} statements; need at least {len(expected)}"
+    for i, canonical in enumerate(expected):
+        stmt = body[i]
+        if not isinstance(stmt, ast.Expr):
+            return False, f"try body[{i}] is {type(stmt).__name__}, expected a bare call to {canonical}"
+        if not _is_gate_call(stmt.value, tree, canonical):
+            return False, f"try body[{i}] is not a call to {canonical}; got {ast.unparse(stmt)}"
+    return True, ""
+
+
 def _iter_tool_functions() -> list[tuple[pathlib.Path, ast.Module, ast.AsyncFunctionDef]]:
     """Every ``async def`` decorated with ``@mcp.tool(...)`` under ``tools/``.
 
@@ -218,6 +292,42 @@ def test_every_purchase_tool_calls_assert_purchases_allowed() -> None:
         if not _function_calls_gate(tree, node, PURCHASE_ASSERT):
             offenders.append(f"{path.name}::{node.name}")
     assert not offenders, f"purchase-tagged tools missing {PURCHASE_ASSERT}(): {offenders}"
+    assert purchase_count > 0, "AST walker found no purchase-tagged tools — test is a no-op"
+
+
+def test_gate_is_first_statement_of_try_block() -> None:
+    """The runtime gate must be the first statement of the tool's first ``try`` block.
+
+    Pins the convention documented in ``CLAUDE.md`` ("Adding a write tool" /
+    "Adding a purchase tool"). A future contributor placing the gate after the
+    API call, or inside an ``if`` branch, would still pass the
+    :func:`_function_calls_gate` invariant — and still ship a tool that hits
+    Gandi before the runtime safety check runs. This test closes that gap.
+
+    For purchase tools, ``assert_readwrite`` must precede ``assert_purchases_allowed``
+    so the narrower error surfaces first.
+    """
+    offenders: list[str] = []
+    write_count = 0
+    purchase_count = 0
+    for path, tree, node in _iter_tool_functions():
+        tags = _function_tags(node)
+        expected = _expected_gates_for_tags(tags)
+        if not expected:
+            continue
+        if PURCHASE_TAG in tags:
+            purchase_count += 1
+        elif WRITE_TAG in tags:
+            write_count += 1
+        try_node = _first_try(node)
+        if try_node is None:
+            offenders.append(f"{path.name}::{node.name}: no try block at function top level")
+            continue
+        ok, reason = _gate_sequence_starting_try(try_node, tree, expected)
+        if not ok:
+            offenders.append(f"{path.name}::{node.name}: {reason}")
+    assert not offenders, "tools with mis-placed runtime gates:\n  " + "\n  ".join(offenders)
+    assert write_count > 0, "AST walker found no write-tagged tools — test is a no-op"
     assert purchase_count > 0, "AST walker found no purchase-tagged tools — test is a no-op"
 
 
@@ -448,3 +558,164 @@ def test_function_calls_gate_rejects_unknown_canonical() -> None:
     tree, func = _parse_module_and_tool(src)
     with pytest.raises(ValueError, match="Unknown canonical gate name"):
         _function_calls_gate(tree, func, "assert_something_else")
+
+
+# ── First-statement gate-placement walker (#73) ────────────────────────────
+
+
+_FIRST_STMT_OK_WRITE = (
+    "from gandi_mcp.tools._common import assert_readwrite\n"
+    "async def t(ctx):\n"
+    "    try:\n"
+    '        assert_readwrite(ctx, "x")\n'
+    "        return None\n"
+    "    except Exception:\n"
+    "        raise\n"
+)
+
+_FIRST_STMT_OK_PURCHASE = (
+    "from gandi_mcp.tools._common import assert_readwrite, assert_purchases_allowed\n"
+    "async def t(ctx):\n"
+    "    try:\n"
+    '        assert_readwrite(ctx, "x")\n'
+    '        assert_purchases_allowed(ctx, "x")\n'
+    "        return None\n"
+    "    except Exception:\n"
+    "        raise\n"
+)
+
+
+def test_first_stmt_walker_accepts_canonical_write_shape() -> None:
+    tree, func = _parse_module_and_tool(_FIRST_STMT_OK_WRITE)
+    try_node = _first_try(func)
+    assert try_node is not None
+    ok, _ = _gate_sequence_starting_try(try_node, tree, [WRITE_ASSERT])
+    assert ok
+
+
+def test_first_stmt_walker_accepts_canonical_purchase_shape() -> None:
+    tree, func = _parse_module_and_tool(_FIRST_STMT_OK_PURCHASE)
+    try_node = _first_try(func)
+    assert try_node is not None
+    ok, _ = _gate_sequence_starting_try(try_node, tree, [WRITE_ASSERT, PURCHASE_ASSERT])
+    assert ok
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        # Gate after the API call — must be flagged.
+        (
+            "from gandi_mcp.tools._common import assert_readwrite\n"
+            "async def t(ctx):\n"
+            "    try:\n"
+            "        await client.register(ctx)\n"
+            '        assert_readwrite(ctx, "register")\n'
+            "    except Exception:\n"
+            "        raise\n"
+        ),
+        # Gate inside an `if False:` branch — never executed.
+        (
+            "from gandi_mcp.tools._common import assert_readwrite\n"
+            "async def t(ctx):\n"
+            "    try:\n"
+            "        if False:\n"
+            '            assert_readwrite(ctx, "x")\n'
+            "        await client.register(ctx)\n"
+            "    except Exception:\n"
+            "        raise\n"
+        ),
+        # Gate inside an `else` branch — same problem.
+        (
+            "from gandi_mcp.tools._common import assert_readwrite\n"
+            "async def t(ctx):\n"
+            "    try:\n"
+            "        if cond:\n"
+            "            return None\n"
+            "        else:\n"
+            '            assert_readwrite(ctx, "x")\n'
+            "    except Exception:\n"
+            "        raise\n"
+        ),
+        # No try block at all.
+        (
+            "from gandi_mcp.tools._common import assert_readwrite\n"
+            "async def t(ctx):\n"
+            '    assert_readwrite(ctx, "x")\n'
+            "    return None\n"
+        ),
+    ],
+)
+def test_first_stmt_walker_rejects_mis_placed_write_gate(src: str) -> None:
+    """A write tool with the gate buried anywhere except `try.body[0]` must be flagged."""
+    tree, func = _parse_module_and_tool(src)
+    try_node = _first_try(func)
+    if try_node is None:
+        # No-try case — the wrapper would record this as an offender too.
+        return
+    ok, _ = _gate_sequence_starting_try(try_node, tree, [WRITE_ASSERT])
+    assert ok is False
+
+
+def test_first_stmt_walker_rejects_reversed_purchase_order() -> None:
+    """``assert_purchases_allowed`` before ``assert_readwrite`` violates the narrower-error contract."""
+    src = (
+        "from gandi_mcp.tools._common import assert_readwrite, assert_purchases_allowed\n"
+        "async def t(ctx):\n"
+        "    try:\n"
+        '        assert_purchases_allowed(ctx, "x")\n'
+        '        assert_readwrite(ctx, "x")\n'
+        "        return None\n"
+        "    except Exception:\n"
+        "        raise\n"
+    )
+    tree, func = _parse_module_and_tool(src)
+    try_node = _first_try(func)
+    assert try_node is not None
+    ok, _ = _gate_sequence_starting_try(try_node, tree, [WRITE_ASSERT, PURCHASE_ASSERT])
+    assert ok is False
+
+
+def test_first_stmt_walker_rejects_purchase_tool_missing_purchase_gate() -> None:
+    """A purchase tool with only the write gate must fail the sequence check."""
+    src = (
+        "from gandi_mcp.tools._common import assert_readwrite\n"
+        "async def t(ctx):\n"
+        "    try:\n"
+        '        assert_readwrite(ctx, "x")\n'
+        "        return None\n"
+        "    except Exception:\n"
+        "        raise\n"
+    )
+    tree, func = _parse_module_and_tool(src)
+    try_node = _first_try(func)
+    assert try_node is not None
+    ok, reason = _gate_sequence_starting_try(try_node, tree, [WRITE_ASSERT, PURCHASE_ASSERT])
+    assert ok is False
+    assert "at least 2" in reason or "assert_purchases_allowed" in reason
+
+
+def test_first_stmt_walker_accepts_aliased_gate_in_first_position() -> None:
+    """The first-stmt check composes with #72: an aliased name in `try.body[0]` is OK."""
+    src = (
+        "from gandi_mcp.tools._common import assert_readwrite as assert_rw\n"
+        "async def t(ctx):\n"
+        "    try:\n"
+        '        assert_rw(ctx, "x")\n'
+        "        return None\n"
+        "    except Exception:\n"
+        "        raise\n"
+    )
+    tree, func = _parse_module_and_tool(src)
+    try_node = _first_try(func)
+    assert try_node is not None
+    ok, _ = _gate_sequence_starting_try(try_node, tree, [WRITE_ASSERT])
+    assert ok
+
+
+def test_first_stmt_walker_rejects_unknown_canonical() -> None:
+    """``_is_gate_call`` rejects a typoed canonical to mirror ``_function_calls_gate``."""
+    tree = ast.parse("from gandi_mcp.tools._common import assert_readwrite\n")
+    fake_call = ast.parse('assert_readwrite(ctx, "x")', mode="eval").body
+    with pytest.raises(ValueError, match="Unknown canonical gate name"):
+        _is_gate_call(fake_call, tree, "assert_something_else")
