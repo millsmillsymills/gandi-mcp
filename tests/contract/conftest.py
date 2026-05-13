@@ -67,5 +67,11 @@ async def client() -> AsyncIterator[GandiClient]:
 
 @pytest.fixture(autouse=True)
 def _ensure_cassette_dir_exists() -> None:
-    """Make the cassette dir exist so a clean checkout doesn't error on first replay."""
-    Path(_DEFAULT_CASSETTE_DIR).mkdir(parents=True, exist_ok=True)
+    """Make the cassette dir exist so a clean checkout doesn't error on first replay.
+
+    Honors the same ``VCR_CASSETTE_DIR`` override as ``vcr_config`` so that
+    ``make refresh-cassettes`` (which stages to ``tests/contract/cassettes.new``)
+    sees an existing target directory.
+    """
+    cassette_dir = os.environ.get("VCR_CASSETTE_DIR", _DEFAULT_CASSETTE_DIR)
+    Path(cassette_dir).mkdir(parents=True, exist_ok=True)

@@ -6,7 +6,7 @@ Thanks for contributing to gandi-mcp!
 
 The `main` branch requires:
 - Pull request before merge
-- Status checks: `static`, `test (3.11)`, `test (3.12)`, `test (3.13)`, `audit`
+- Status checks: `static`, `test (3.13)`, `audit`
 - Linear history (no merge commits)
 - No force-push
 
@@ -72,7 +72,7 @@ assert against them.
 ### Code style
 
 - `ruff format` formats; `ruff check` lints
-- `mypy --strict` for type checking
+- `uv run ty check src/gandi_mcp/` for type checking
 - Run `uv run pre-commit run --all-files` before committing
 
 ### Commits
