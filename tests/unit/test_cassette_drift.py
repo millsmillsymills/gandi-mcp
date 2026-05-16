@@ -225,6 +225,11 @@ class TestRenderReport:
         idx_z = report.index(".z")
         assert idx_a < idx_m < idx_z
 
+    def test_unknown_kind_uses_fallback_renderer(self) -> None:
+        entries = [DriftEntry("future_kind", ".x", "old", "new")]
+        report = render_report("cassette.yaml", entries, fmt="text")
+        assert "? future_kind .x: old -> new" in report
+
 
 def _write_cassette(tmp_path, name: str, interactions: list[dict]) -> str:
     import yaml

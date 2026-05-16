@@ -168,12 +168,16 @@ _RENDERERS = {
 }
 
 
+def _default_renderer(e: DriftEntry) -> str:
+    return f"? {e.kind} {e.path}: {e.old} -> {e.new}"
+
+
 def render_report(cassette_path: str, entries: list[DriftEntry], fmt: str = "text") -> str:
     """Render a per-cassette drift report. Empty entries → empty string."""
     if not entries:
         return ""
     sorted_entries = sorted(entries, key=lambda e: (e.path, e.kind))
-    lines = [_RENDERERS[e.kind](e) for e in sorted_entries]
+    lines = [_RENDERERS.get(e.kind, _default_renderer)(e) for e in sorted_entries]
     if fmt == "md":
         return f"## {cassette_path}\n\n```\n" + "\n".join(lines) + "\n```\n"
     return f"{cassette_path}:\n" + "\n".join(f"  {line}" for line in lines) + "\n"
