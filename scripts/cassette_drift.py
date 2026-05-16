@@ -36,6 +36,9 @@ import yaml
 # Shapes are hashable so frozensets can hold them.
 Shape = Any
 
+# A parsed cassette interaction: (request, body_or_None, occurrence_index, body_skip_reason).
+type Triple = tuple[dict, Any, int, str | None]
+
 
 def extract_shape(value: Any) -> Shape:  # noqa: PLR0911 — one return per JSON type tag; flatter than dispatch dict
     """Walk ``value`` and return its normalized shape, discarding all values."""
@@ -206,7 +209,7 @@ def _request_key(req: dict) -> tuple[str, str, str]:
     return (method, uri, body_hash)
 
 
-def load_cassette(path: str) -> list[tuple[dict, Any, int, str | None]]:
+def load_cassette(path: str) -> list[Triple]:
     """Parse a VCR cassette into ``(request, body_or_None, occurrence_index, body_skip_reason)`` tuples.
 
     ``body_skip_reason`` is ``None`` when the body parsed successfully. Otherwise it
@@ -229,7 +232,7 @@ def load_cassette(path: str) -> list[tuple[dict, Any, int, str | None]]:
     if not isinstance(interactions, list):
         raise CassetteParseError(f"'interactions' in {path} is not a list")
 
-    tuples: list[tuple[dict, Any, int, str | None]] = []
+    tuples: list[Triple] = []
     counts: dict[tuple[str, str, str], int] = {}
     for interaction in interactions:
         if not isinstance(interaction, dict):
@@ -263,13 +266,9 @@ def load_cassette(path: str) -> list[tuple[dict, Any, int, str | None]]:
 
 
 def pair_interactions(
-    old: list[tuple[dict, Any, int, str | None]],
-    new: list[tuple[dict, Any, int, str | None]],
-) -> tuple[
-    list[tuple[tuple[dict, Any, int, str | None], tuple[dict, Any, int, str | None]]],
-    list[tuple[dict, Any, int, str | None]],
-    list[tuple[dict, Any, int, str | None]],
-]:
+    old: list[Triple],
+    new: list[Triple],
+) -> tuple[list[tuple[Triple, Triple]], list[Triple], list[Triple]]:
     """Pair old and new interactions by (method, uri, body-hash, occurrence_index).
 
     Returns ``(pairs, only_in_old, only_in_new)``.
