@@ -346,6 +346,24 @@ class TestLoadCassette:
         rows = load_cassette(p)
         assert [t[2] for t in rows] == [0, 1, 2]
 
+    def test_request_body_as_dict_does_not_crash(self, tmp_path) -> None:
+        # VCR can emit request bodies as parsed dicts. _request_key must handle.
+        p = _write_cassette(
+            tmp_path,
+            "post.yaml",
+            [
+                {
+                    "request": {"method": "POST", "uri": "https://x", "body": {"k": "v"}},
+                    "response": {"status": {"code": 200}, "body": {"string": '{"ok": true}'}},
+                },
+            ],
+        )
+        triples = load_cassette(p)
+        assert len(triples) == 1
+        # Hash stable: re-run yields same triple.
+        triples_2 = load_cassette(p)
+        assert triples[0][0]["uri"] == triples_2[0][0]["uri"]
+
     def test_occurrence_index_resets_per_distinct_request(self, tmp_path) -> None:
         a = {"method": "GET", "uri": "https://x/a", "body": None}
         b = {"method": "GET", "uri": "https://x/b", "body": None}

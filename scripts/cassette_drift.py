@@ -179,7 +179,24 @@ def _request_key(req: dict) -> tuple[str, str, str]:
     method = str(req.get("method", ""))
     uri = str(req.get("uri", ""))
     body = req.get("body")
-    body_bytes = b"" if body is None else (body.encode("utf-8") if isinstance(body, str) else bytes(body))
+    if body is None:
+        body_bytes = b""
+    elif isinstance(body, str):
+        body_bytes = body.encode("utf-8")
+    elif isinstance(body, (bytes, bytearray)):
+        body_bytes = bytes(body)
+    else:
+        # Non-str/bytes body (e.g. dict from VCR-parsed JSON body). Stable
+        # canonical JSON so re-recording the same logical request yields the
+        # same hash.
+        try:
+            body_bytes = json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        except (TypeError, ValueError):
+            # Fallback for things json can't serialize. repr() is stable
+            # within a Python version; this is best-effort, not correctness-
+            # critical (drift would still be detected, just at slightly
+            # different pairing granularity).
+            body_bytes = repr(body).encode("utf-8")
     body_hash = hashlib.sha256(body_bytes).hexdigest()
     return (method, uri, body_hash)
 
