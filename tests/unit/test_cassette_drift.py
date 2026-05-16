@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import json as _json
+import subprocess as _subprocess
+
 import pytest
 from scripts.cassette_drift import (
     CassetteParseError,
     DriftEntry,
     diff_shapes,
     extract_shape,
+    find_existing_drift_issue,
     load_cassette,
     merge_list_shape,
     render_report,
@@ -325,3 +329,40 @@ class TestLoadCassette:
 def test_request_pairing_helper_exists() -> None:
     # Pairing logic is used by main() — sanity check it's importable.
     from scripts.cassette_drift import pair_interactions  # noqa: F401
+
+
+class TestFindExistingDriftIssue:
+    def test_no_open_issues_returns_none(self, monkeypatch) -> None:
+        def fake_run(*args, **kwargs):
+            return _subprocess.CompletedProcess(args=args[0], returncode=0, stdout="[]", stderr="")
+
+        monkeypatch.setattr("scripts.cassette_drift.subprocess.run", fake_run)
+        assert find_existing_drift_issue("drift", "drift: ") is None
+
+    def test_finds_matching_issue_by_title_prefix(self, monkeypatch) -> None:
+        payload = _json.dumps([{"number": 42, "title": "drift: 3 cassette(s) drifted upstream"}])
+
+        def fake_run(*args, **kwargs):
+            return _subprocess.CompletedProcess(args=args[0], returncode=0, stdout=payload, stderr="")
+
+        monkeypatch.setattr("scripts.cassette_drift.subprocess.run", fake_run)
+        assert find_existing_drift_issue("drift", "drift: ") == 42
+
+    def test_ignores_issues_with_drift_label_but_different_prefix(self, monkeypatch) -> None:
+        payload = _json.dumps([{"number": 99, "title": "regression in drift checker"}])
+
+        def fake_run(*args, **kwargs):
+            return _subprocess.CompletedProcess(args=args[0], returncode=0, stdout=payload, stderr="")
+
+        monkeypatch.setattr("scripts.cassette_drift.subprocess.run", fake_run)
+        assert find_existing_drift_issue("drift", "drift: ") is None
+
+    def test_gh_failure_returns_none_and_does_not_raise(self, monkeypatch) -> None:
+        # If gh fails (auth issue, network, etc.), we surface no existing issue so
+        # main() falls through to issue creation; the creation attempt will then
+        # produce its own error path.
+        def fake_run(*args, **kwargs):
+            return _subprocess.CompletedProcess(args=args[0], returncode=1, stdout="", stderr="gh: not authenticated")
+
+        monkeypatch.setattr("scripts.cassette_drift.subprocess.run", fake_run)
+        assert find_existing_drift_issue("drift", "drift: ") is None

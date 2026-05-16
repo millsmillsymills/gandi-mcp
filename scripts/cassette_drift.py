@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -223,3 +224,40 @@ def pair_interactions(
     only_in_old = [old_by_key[k] for k in sorted(keys_old - keys_new)]
     only_in_new = [new_by_key[k] for k in sorted(keys_new - keys_old)]
     return pairs, only_in_old, only_in_new
+
+
+def find_existing_drift_issue(label: str, title_prefix: str) -> int | None:
+    """Look up an open issue with the given label whose title starts with ``title_prefix``.
+
+    Returns the issue number, or ``None`` on no match or on any ``gh`` failure
+    (failure falls through to issue creation in main()).
+    """
+    result = subprocess.run(
+        [  # noqa: S607 — relying on PATH lookup for `gh` is intentional
+            "gh",
+            "issue",
+            "list",
+            "--label",
+            label,
+            "--state",
+            "open",
+            "--json",
+            "number,title",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return None
+    try:
+        issues = json.loads(result.stdout)
+    except (ValueError, TypeError):
+        return None
+    for issue in issues:
+        title = issue.get("title", "")
+        if isinstance(title, str) and title.startswith(title_prefix):
+            number = issue.get("number")
+            if isinstance(number, int):
+                return number
+    return None
