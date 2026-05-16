@@ -41,6 +41,12 @@ jobs:
       - run: uv sync --extra dev
       - run: uv run pytest -m "not live" --cov=gandi_mcp --cov-report=xml --cov-report=json --cov-report=term --cov-fail-under=85
       - run: uv run python scripts/check_coverage_thresholds.py
+      - name: Cassette staleness warning (non-blocking)
+        if: always()
+        run: |
+          if ! make check-cassettes-fresh; then
+            echo "::warning::Some cassettes are >180 days old. Run 'make refresh-cassettes' locally."
+          fi
       - if: matrix.python == '3.13'
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2  # v6.0.0
         with:
