@@ -232,22 +232,25 @@ def find_existing_drift_issue(label: str, title_prefix: str) -> int | None:
     Returns the issue number, or ``None`` on no match or on any ``gh`` failure
     (failure falls through to issue creation in main()).
     """
-    result = subprocess.run(
-        [  # noqa: S607 — relying on PATH lookup for `gh` is intentional
-            "gh",
-            "issue",
-            "list",
-            "--label",
-            label,
-            "--state",
-            "open",
-            "--json",
-            "number,title",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            [  # noqa: S607 — relying on PATH lookup for `gh` is intentional
+                "gh",
+                "issue",
+                "list",
+                "--label",
+                label,
+                "--state",
+                "open",
+                "--json",
+                "number,title",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (FileNotFoundError, OSError):
+        return None
     if result.returncode != 0:
         return None
     try:

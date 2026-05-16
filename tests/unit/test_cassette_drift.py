@@ -366,3 +366,11 @@ class TestFindExistingDriftIssue:
 
         monkeypatch.setattr("scripts.cassette_drift.subprocess.run", fake_run)
         assert find_existing_drift_issue("drift", "drift: ") is None
+
+    def test_gh_not_installed_returns_none(self, monkeypatch) -> None:
+        # FileNotFoundError when gh isn't on PATH — docstring promises "None on any gh failure".
+        def fake_run(*args, **kwargs):
+            raise FileNotFoundError("gh")
+
+        monkeypatch.setattr("scripts.cassette_drift.subprocess.run", fake_run)
+        assert find_existing_drift_issue("drift", "drift: ") is None
