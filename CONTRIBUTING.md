@@ -69,6 +69,50 @@ following keys: `customer.id`, `owner.id`, `registrant.email`,
 (DNS record IDs, mailbox IDs, the resource's own `id`) survive — tests may
 assert against them.
 
+### Detecting cassette drift
+
+Cassettes pin response shape (keys + types + cardinality bounds) but don't
+detect when Gandi silently renames or restructures fields between refreshes.
+`make check-drift` records new cassettes against `teamrocket.network`,
+diffs them structurally against the committed tree, and reports any
+additions / removals / type changes / cardinality shifts.
+
+**To run locally:**
+
+```bash
+GANDI_TOKEN=$(pass show gandi/pat-sandbox) make check-drift
+```
+
+Exits 0 on no drift, 1 on drift detected (with a report on stdout), 2 on
+invalid input or missing token. The freshly-recorded cassettes stay in
+`tests/contract/cassettes.new/` — they are never automatically swapped
+into place. If the drift is real and accepted, run `make refresh-cassettes`
+to update the committed tree.
+
+**To run in CI:**
+
+The `drift-check` workflow under `.github/workflows/drift-check.yml` is
+dispatch-only (no cron). Trigger it from the Actions tab. On detected
+drift the workflow opens or appends to a `drift`-labeled issue via the
+project's `GANDI_SANDBOX_PAT` secret. Required:
+
+- Repo secret `GANDI_SANDBOX_PAT` set to a PAT scoped to `teamrocket.network`.
+- Repo label `drift` exists.
+
+**What counts as drift?**
+
+| Symbol | Meaning |
+|---|---|
+| `+ added <path> (<type>)` | New key Gandi started returning. |
+| `- removed <path> (<type>)` | Key Gandi stopped returning. |
+| `~ <path>: <old> → <new>` | Value type changed (e.g. `str → int`). |
+| `! list <path>: m..n → p..q` | List cardinality bounds shifted. |
+| `~ union <path>: ...` | A heterogeneous list's member-type set changed. |
+
+Warnings (stderr) cover non-comparable interactions (non-JSON bodies,
+missing-on-new files, orchestration changes from the test suite itself);
+these do not fail the gate.
+
 ### Code style
 
 - `ruff format` formats; `ruff check` lints
