@@ -278,12 +278,12 @@ def _report_summary_line(n_cassettes: int) -> str:
     return f"drift: {n_cassettes} cassette{suffix} drifted upstream"
 
 
-def _post_or_append_issue(label: str, title_prefix: str, body: str) -> tuple[bool, str]:
-    """Create a new drift issue or append a dated comment to an existing one.
+def _post_or_append_issue(label: str, title: str, body: str) -> tuple[bool, str]:
+    """Create a new drift issue with the given title, or append a dated comment to an existing one.
 
     Returns ``(success, message)``. ``success=False`` indicates ``gh`` failed.
     """
-    existing = find_existing_drift_issue(label, title_prefix)
+    existing = find_existing_drift_issue(label, "drift: ")
     timestamp = _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     if existing is not None:
         commented_body = f"### Drift recurred at {timestamp}\n\n{body}"
@@ -301,10 +301,6 @@ def _post_or_append_issue(label: str, title_prefix: str, body: str) -> tuple[boo
             return False, f"append to issue #{existing} failed: {result.stderr.strip()}"
         return True, f"appended comment to issue #{existing}"
 
-    n_cassettes = body.count("\n##") + (1 if body.startswith("##") else 0)
-    if n_cassettes == 0:
-        n_cassettes = 1  # text format — at least one cassette must have produced the body
-    title = _report_summary_line(n_cassettes)
     try:
         result = subprocess.run(
             ["gh", "issue", "create", "--label", label, "--title", title, "--body-file", "-"],  # noqa: S607 — PATH lookup for `gh` is intentional
@@ -397,7 +393,8 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912 — single-pass
         sys.stderr.write(w + "\n")
 
     if args.open_issue and drifted_cassettes:
-        success, message = _post_or_append_issue("drift", "drift: ", full_report)
+        title = _report_summary_line(len(drifted_cassettes))
+        success, message = _post_or_append_issue("drift", title, full_report)
         if success:
             sys.stderr.write(message + "\n")
         else:
