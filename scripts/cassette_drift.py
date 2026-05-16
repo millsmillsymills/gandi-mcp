@@ -11,8 +11,13 @@ Run via ``make check-drift`` after PR #100 lands. See
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
+
+import yaml
 
 # A "shape" is one of:
 #   - a string scalar tag: "str" / "int" / "float" / "bool" / "null"
@@ -148,3 +153,73 @@ def render_report(cassette_path: str, entries: list[DriftEntry], fmt: str = "tex
     if fmt == "md":
         return f"## {cassette_path}\n\n```\n" + "\n".join(lines) + "\n```\n"
     return f"{cassette_path}:\n" + "\n".join(f"  {line}" for line in lines) + "\n"
+
+
+class CassetteParseError(Exception):
+    """Raised when a cassette YAML is malformed or missing required structure."""
+
+
+def _request_key(req: dict) -> tuple[str, str, str]:
+    method = str(req.get("method", ""))
+    uri = str(req.get("uri", ""))
+    body = req.get("body")
+    body_bytes = b"" if body is None else (body.encode("utf-8") if isinstance(body, str) else bytes(body))
+    body_hash = hashlib.sha256(body_bytes).hexdigest()
+    return (method, uri, body_hash)
+
+
+def load_cassette(path: str) -> list[tuple[dict, Any, int]]:
+    """Parse a VCR cassette into ``(request, body_or_None, occurrence_index)`` triples."""
+    try:
+        with Path(path).open(encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        raise CassetteParseError(f"YAML parse error in {path}: {e}") from e
+    if not isinstance(data, dict) or "interactions" not in data:
+        raise CassetteParseError(f"missing top-level 'interactions' in {path}")
+    interactions = data["interactions"]
+    if not isinstance(interactions, list):
+        raise CassetteParseError(f"'interactions' in {path} is not a list")
+
+    triples: list[tuple[dict, Any, int]] = []
+    counts: dict[tuple[str, str, str], int] = {}
+    for interaction in interactions:
+        if not isinstance(interaction, dict):
+            continue
+        request = interaction.get("request") or {}
+        response = interaction.get("response") or {}
+        status = (response.get("status") or {}).get("code", 0)
+        body_field = response.get("body") or {}
+        raw = body_field.get("string") if isinstance(body_field, dict) else None
+        body: Any
+        if not raw or not isinstance(status, int) or not (200 <= status < 300):
+            body = None
+        else:
+            try:
+                body = json.loads(raw)
+            except (ValueError, TypeError):
+                body = None
+        key = _request_key(request)
+        occ = counts.get(key, 0)
+        counts[key] = occ + 1
+        triples.append((request, body, occ))
+    return triples
+
+
+def pair_interactions(
+    old: list[tuple[dict, Any, int]],
+    new: list[tuple[dict, Any, int]],
+) -> tuple[list[tuple[tuple[dict, Any, int], tuple[dict, Any, int]]], list, list]:
+    """Pair old and new interactions by (method, uri, body-hash, occurrence_index).
+
+    Returns ``(pairs, only_in_old, only_in_new)``.
+    """
+    old_by_key = {(*_request_key(r), occ): (r, b, occ) for (r, b, occ) in old}
+    new_by_key = {(*_request_key(r), occ): (r, b, occ) for (r, b, occ) in new}
+    keys_old = set(old_by_key)
+    keys_new = set(new_by_key)
+    common = keys_old & keys_new
+    pairs = [(old_by_key[k], new_by_key[k]) for k in sorted(common)]
+    only_in_old = [old_by_key[k] for k in sorted(keys_old - keys_new)]
+    only_in_new = [new_by_key[k] for k in sorted(keys_new - keys_old)]
+    return pairs, only_in_old, only_in_new

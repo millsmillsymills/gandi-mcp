@@ -2,7 +2,16 @@
 
 from __future__ import annotations
 
-from scripts.cassette_drift import DriftEntry, diff_shapes, extract_shape, merge_list_shape, render_report
+import pytest
+from scripts.cassette_drift import (
+    CassetteParseError,
+    DriftEntry,
+    diff_shapes,
+    extract_shape,
+    load_cassette,
+    merge_list_shape,
+    render_report,
+)
 
 
 class TestExtractShape:
@@ -194,3 +203,125 @@ class TestRenderReport:
         idx_m = report.index(".m")
         idx_z = report.index(".z")
         assert idx_a < idx_m < idx_z
+
+
+def _write_cassette(tmp_path, name: str, interactions: list[dict]) -> str:
+    import yaml
+
+    path = tmp_path / name
+    path.write_text(yaml.safe_dump({"interactions": interactions}))
+    return str(path)
+
+
+class TestLoadCassette:
+    def test_well_formed_json_body(self, tmp_path) -> None:
+        p = _write_cassette(
+            tmp_path,
+            "ok.yaml",
+            [
+                {
+                    "request": {"method": "GET", "uri": "https://api.gandi.net/v5/x", "body": None},
+                    "response": {"status": {"code": 200}, "body": {"string": '{"a": 1}'}},
+                },
+            ],
+        )
+        triples = load_cassette(p)
+        assert len(triples) == 1
+        req, body, occ = triples[0]
+        assert req["method"] == "GET"
+        assert body == {"a": 1}
+        assert occ == 0
+
+    def test_binary_body_returns_none(self, tmp_path) -> None:
+        # Body that doesn't parse as JSON (e.g. HTML or binary).
+        p = _write_cassette(
+            tmp_path,
+            "html.yaml",
+            [
+                {
+                    "request": {"method": "GET", "uri": "https://x", "body": None},
+                    "response": {"status": {"code": 200}, "body": {"string": "<html>not json</html>"}},
+                },
+            ],
+        )
+        assert load_cassette(p)[0][1] is None
+
+    def test_missing_body_string_returns_none(self, tmp_path) -> None:
+        p = _write_cassette(
+            tmp_path,
+            "nobody.yaml",
+            [
+                {
+                    "request": {"method": "GET", "uri": "https://x", "body": None},
+                    "response": {"status": {"code": 204}, "body": {}},
+                },
+            ],
+        )
+        assert load_cassette(p)[0][1] is None
+
+    def test_non_2xx_response_returns_none(self, tmp_path) -> None:
+        # Even if the body is valid JSON, a non-2xx response is excluded from drift.
+        p = _write_cassette(
+            tmp_path,
+            "err.yaml",
+            [
+                {
+                    "request": {"method": "GET", "uri": "https://x", "body": None},
+                    "response": {"status": {"code": 404}, "body": {"string": '{"error": "x"}'}},
+                },
+            ],
+        )
+        assert load_cassette(p)[0][1] is None
+
+    def test_malformed_yaml_raises(self, tmp_path) -> None:
+        path = tmp_path / "bad.yaml"
+        path.write_text("this is: : not: valid: yaml: ::::: -")
+        with pytest.raises(CassetteParseError):
+            load_cassette(str(path))
+
+    def test_missing_interactions_raises(self, tmp_path) -> None:
+        path = tmp_path / "no-interactions.yaml"
+        path.write_text("other_key: value\n")
+        with pytest.raises(CassetteParseError):
+            load_cassette(str(path))
+
+    def test_occurrence_index_monotonic_per_identical_request(self, tmp_path) -> None:
+        body = '{"k": 1}'
+        same_req = {"method": "GET", "uri": "https://x/poll", "body": "ping"}
+        p = _write_cassette(
+            tmp_path,
+            "poll.yaml",
+            [
+                {"request": same_req, "response": {"status": {"code": 200}, "body": {"string": body}}},
+                {"request": same_req, "response": {"status": {"code": 200}, "body": {"string": body}}},
+                {"request": same_req, "response": {"status": {"code": 200}, "body": {"string": body}}},
+            ],
+        )
+        triples = load_cassette(p)
+        assert [t[2] for t in triples] == [0, 1, 2]
+
+    def test_occurrence_index_resets_per_distinct_request(self, tmp_path) -> None:
+        a = {"method": "GET", "uri": "https://x/a", "body": None}
+        b = {"method": "GET", "uri": "https://x/b", "body": None}
+        body = '{"k": 1}'
+        p = _write_cassette(
+            tmp_path,
+            "mixed.yaml",
+            [
+                {"request": a, "response": {"status": {"code": 200}, "body": {"string": body}}},
+                {"request": b, "response": {"status": {"code": 200}, "body": {"string": body}}},
+                {"request": a, "response": {"status": {"code": 200}, "body": {"string": body}}},
+            ],
+        )
+        triples = load_cassette(p)
+        # Order preserved; occurrence_index is 0,0,1 (a's second appearance is index 1; b's first is 0).
+        assert [(t[0]["uri"], t[2]) for t in triples] == [
+            ("https://x/a", 0),
+            ("https://x/b", 0),
+            ("https://x/a", 1),
+        ]
+
+
+def test_request_pairing_helper_exists() -> None:
+    # Pairing logic is used by main() — sanity check it's importable.
+    from scripts.cassette_drift import pair_interactions  # noqa: F401
