@@ -5,7 +5,12 @@ committed ``tests/contract/cassettes/`` and a freshly-recorded
 ``tests/contract/cassettes.new/``). Emits ``+/-/~/!`` entries for keys
 added/removed, types changed, and list cardinality bounds changed.
 
-Run via ``make check-drift`` after PR #100 lands. See
+Direct invocation:
+    uv run python scripts/cassette_drift.py \\
+        --cassette-dir-old tests/contract/cassettes \\
+        --cassette-dir-new tests/contract/cassettes.new
+
+After Phase 2 lands (#106), ``make check-drift`` will wrap this. See
 ``docs/superpowers/specs/2026-05-15-cassette-drift-detection-design.md``.
 """
 
