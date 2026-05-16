@@ -85,10 +85,10 @@ def _render_shape(shape: Shape) -> str:
         return "{" + ", ".join(keys) + "}"
     if isinstance(shape, tuple):
         tag = shape[0]
-        if tag == "list":
+        if tag == "list" and len(shape) == 4:
             _, lo, hi, item = shape
             return f"list[{_render_shape(item) if item is not None else 'empty'}]({lo}..{hi})"
-        if tag == "union":
+        if tag == "union" and len(shape) == 2:
             members = sorted(_render_shape(m) for m in shape[1])
             return "{" + ", ".join(members) + "}"
     return repr(shape)
@@ -111,7 +111,13 @@ def diff_shapes(old: Shape, new: Shape, path: str = "") -> list[DriftEntry]:
                 entries.extend(diff_shapes(old_keys[k], new_keys[k], child_path))
         return entries
 
-    if isinstance(old, tuple) and isinstance(new, tuple) and old[0] == new[0] == "list":
+    if (
+        isinstance(old, tuple)
+        and isinstance(new, tuple)
+        and len(old) == 4
+        and len(new) == 4
+        and old[0] == new[0] == "list"
+    ):
         _, o_lo, o_hi, o_item = old
         _, n_lo, n_hi, n_item = new
         if (o_lo, o_hi) != (n_lo, n_hi):
@@ -129,7 +135,13 @@ def diff_shapes(old: Shape, new: Shape, path: str = "") -> list[DriftEntry]:
             )
         return entries
 
-    if isinstance(old, tuple) and isinstance(new, tuple) and old[0] == new[0] == "union":
+    if (
+        isinstance(old, tuple)
+        and isinstance(new, tuple)
+        and len(old) == 2
+        and len(new) == 2
+        and old[0] == new[0] == "union"
+    ):
         if old[1] != new[1]:
             entries.append(DriftEntry("union_changed", path, _render_shape(old), _render_shape(new)))
         return entries
