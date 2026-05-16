@@ -57,12 +57,13 @@ class TestExtractShape:
         assert shape == ("list", 2, 2, frozenset({("id", "str")}))
 
     def test_no_value_survives_extraction(self) -> None:
-        # Walk the shape and assert no original value (the literal "hello" or 42) is present.
-        shape = extract_shape({"name": "hello", "count": 42, "tags": ["a", "b"]})
+        # Use sentinel values that can't appear naturally in shape metadata.
+        sentinel_str = "VALUE_LEAK_CANARY_STR_FIELD"
+        sentinel_int_repr = "9876543210987654"  # implausible as cardinality
+        shape = extract_shape({"name": sentinel_str, "count": int(sentinel_int_repr), "tags": [sentinel_str]})
         flat = repr(shape)
-        assert "hello" not in flat
-        assert "42" not in flat
-        assert "'a'" not in flat
+        assert sentinel_str not in flat
+        assert sentinel_int_repr not in flat
 
     def test_unknown_type_falls_back_to_type_name(self) -> None:
         # Documented fallthrough for bytes / unknown types.
