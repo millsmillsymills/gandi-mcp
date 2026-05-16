@@ -83,7 +83,7 @@ def _write_gh_stub(
 
 
 def _path_with_stub(bindir: Path) -> dict[str, str]:
-    return {"PATH": f"{bindir}:{os.environ['PATH']}"}
+    return {"PATH": f"{bindir}:{os.environ.get('PATH', '')}"}
 
 
 @pytest.fixture

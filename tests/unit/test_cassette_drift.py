@@ -57,12 +57,13 @@ class TestExtractShape:
         assert shape == ("list", 2, 2, frozenset({("id", "str")}))
 
     def test_no_value_survives_extraction(self) -> None:
-        # Walk the shape and assert no original value (the literal "hello" or 42) is present.
-        shape = extract_shape({"name": "hello", "count": 42, "tags": ["a", "b"]})
+        # Use sentinel values that can't appear naturally in shape metadata.
+        sentinel_str = "VALUE_LEAK_CANARY_STR_FIELD"
+        sentinel_int_repr = "9876543210987654"  # implausible as cardinality
+        shape = extract_shape({"name": sentinel_str, "count": int(sentinel_int_repr), "tags": [sentinel_str]})
         flat = repr(shape)
-        assert "hello" not in flat
-        assert "42" not in flat
-        assert "'a'" not in flat
+        assert sentinel_str not in flat
+        assert sentinel_int_repr not in flat
 
     def test_unknown_type_falls_back_to_type_name(self) -> None:
         # Documented fallthrough for bytes / unknown types.
@@ -142,13 +143,24 @@ class TestDiffShapes:
         old = ("union", frozenset({"str"}))
         new = ("union", frozenset({"str", "int"}))
         entries = diff_shapes(old, new)
-        assert entries == [DriftEntry(kind="union_changed", path="", old="{str}", new="{int, str}")]
+        assert entries == [DriftEntry(kind="union_changed", path="", old="union{str}", new="union{int, str}")]
 
     def test_union_member_removed(self) -> None:
         old = ("union", frozenset({"str", "int"}))
         new = ("union", frozenset({"str"}))
         entries = diff_shapes(old, new)
-        assert entries == [DriftEntry(kind="union_changed", path="", old="{int, str}", new="{str}")]
+        assert entries == [DriftEntry(kind="union_changed", path="", old="union{int, str}", new="union{str}")]
+
+    def test_dict_vs_union_renders_distinctly_in_type_changed(self) -> None:
+        # When old is a dict-keyset and new is a union (or vice versa),
+        # the rendered diff must show "dict{...}" vs "union{...}" so the
+        # operator can tell which side is which.
+        old = frozenset({("a", "str"), ("b", "int")})
+        new = ("union", frozenset({"str", "int"}))
+        entries = diff_shapes(old, new)
+        assert len(entries) == 1
+        assert "dict{" in entries[0].old
+        assert "union{" in entries[0].new
 
     def test_jq_path_deeply_nested(self) -> None:
         old = frozenset({("a", frozenset({("b", frozenset({("c", "str")}))}))})
@@ -190,9 +202,9 @@ class TestRenderReport:
         assert "! list .items: 0..3 → 0..50" in report
 
     def test_union_changed_entry_text_format(self) -> None:
-        entries = [DriftEntry("union_changed", ".x", "{str}", "{int, str}")]
+        entries = [DriftEntry("union_changed", ".x", "union{str}", "union{int, str}")]
         report = render_report("cassette.yaml", entries, fmt="text")
-        assert "~ union .x: {str} → {int, str}" in report
+        assert "~ union .x: union{str} → union{int, str}" in report
 
     def test_markdown_format_has_fenced_block_and_heading(self) -> None:
         entries = [DriftEntry("added", ".foo", None, "str")]
@@ -213,6 +225,11 @@ class TestRenderReport:
         idx_m = report.index(".m")
         idx_z = report.index(".z")
         assert idx_a < idx_m < idx_z
+
+    def test_unknown_kind_uses_fallback_renderer(self) -> None:
+        entries = [DriftEntry("future_kind", ".x", "old", "new")]
+        report = render_report("cassette.yaml", entries, fmt="text")
+        assert "? future_kind .x: old -> new" in report
 
 
 def _write_cassette(tmp_path, name: str, interactions: list[dict]) -> str:
