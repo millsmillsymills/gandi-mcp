@@ -14,6 +14,7 @@ from scripts.cassette_drift import (
     find_existing_drift_issue,
     load_cassette,
     merge_list_shape,
+    pair_interactions,
     render_report,
 )
 
@@ -326,9 +327,84 @@ class TestLoadCassette:
         ]
 
 
-def test_request_pairing_helper_exists() -> None:
-    # Pairing logic is used by main() — sanity check it's importable.
-    from scripts.cassette_drift import pair_interactions  # noqa: F401
+class TestPairInteractions:
+    def test_empty_inputs_yield_empty_result(self) -> None:
+        pairs, only_old, only_new = pair_interactions([], [])
+        assert pairs == []
+        assert only_old == []
+        assert only_new == []
+
+    def test_identical_request_lists_pair_one_to_one(self) -> None:
+        req = {"method": "GET", "uri": "https://x", "body": None}
+        old = [(req, {"a": 1}, 0)]
+        new = [(req, {"a": 1}, 0)]
+        pairs, only_old, only_new = pair_interactions(old, new)
+        assert len(pairs) == 1
+        assert pairs[0] == ((req, {"a": 1}, 0), (req, {"a": 1}, 0))
+        assert only_old == []
+        assert only_new == []
+
+    def test_same_url_different_body_yields_distinct_pairs(self) -> None:
+        req_a = {"method": "POST", "uri": "https://x", "body": "ping"}
+        req_b = {"method": "POST", "uri": "https://x", "body": "pong"}
+        old = [(req_a, {"a": 1}, 0), (req_b, {"b": 1}, 0)]
+        new = [(req_a, {"a": 1}, 0), (req_b, {"b": 1}, 0)]
+        pairs, only_old, only_new = pair_interactions(old, new)
+        assert len(pairs) == 2
+        assert only_old == []
+        assert only_new == []
+
+    def test_two_identical_requests_pair_on_occurrence_index(self) -> None:
+        # Critical: two identical polls in the same cassette must NOT collide on the
+        # first match. occurrence_index disambiguates them.
+        req = {"method": "GET", "uri": "https://x/poll", "body": None}
+        old = [(req, {"state": "pending"}, 0), (req, {"state": "done"}, 1)]
+        new = [(req, {"state": "pending"}, 0), (req, {"state": "done"}, 1)]
+        pairs, only_old, only_new = pair_interactions(old, new)
+        assert len(pairs) == 2
+        # First poll pairs with first poll (occ=0); second with second (occ=1).
+        # Body distinguishability is what we're guarding here — without the occ-key,
+        # both new triples would pair against the FIRST old triple, masking drift.
+        assert pairs[0][0][1] == {"state": "pending"}
+        assert pairs[0][1][1] == {"state": "pending"}
+        assert pairs[1][0][1] == {"state": "done"}
+        assert pairs[1][1][1] == {"state": "done"}
+        assert only_old == []
+        assert only_new == []
+
+    def test_request_gone_in_new_lands_in_only_in_old(self) -> None:
+        req_a = {"method": "GET", "uri": "https://x/a", "body": None}
+        req_b = {"method": "GET", "uri": "https://x/b", "body": None}
+        old = [(req_a, {"a": 1}, 0), (req_b, {"b": 1}, 0)]
+        new = [(req_a, {"a": 1}, 0)]
+        pairs, only_old, only_new = pair_interactions(old, new)
+        assert len(pairs) == 1
+        assert len(only_old) == 1
+        assert only_old[0][0]["uri"] == "https://x/b"
+        assert only_new == []
+
+    def test_new_request_added_lands_in_only_in_new(self) -> None:
+        req_a = {"method": "GET", "uri": "https://x/a", "body": None}
+        req_b = {"method": "GET", "uri": "https://x/b", "body": None}
+        old = [(req_a, {"a": 1}, 0)]
+        new = [(req_a, {"a": 1}, 0), (req_b, {"b": 1}, 0)]
+        pairs, only_old, only_new = pair_interactions(old, new)
+        assert len(pairs) == 1
+        assert only_old == []
+        assert len(only_new) == 1
+        assert only_new[0][0]["uri"] == "https://x/b"
+
+    def test_result_is_deterministic_across_input_order(self) -> None:
+        # pair_interactions must sort its key-sets for reproducible output.
+        req_a = {"method": "GET", "uri": "https://x/a", "body": None}
+        req_b = {"method": "GET", "uri": "https://x/b", "body": None}
+        # Same content, two different orderings.
+        ordering_1 = [(req_a, {"a": 1}, 0), (req_b, {"b": 1}, 0)]
+        ordering_2 = [(req_b, {"b": 1}, 0), (req_a, {"a": 1}, 0)]
+        p1, _, _ = pair_interactions(ordering_1, ordering_1)
+        p2, _, _ = pair_interactions(ordering_2, ordering_2)
+        # Sorted pairing → identical output regardless of input ordering.
+        assert [p[0][0]["uri"] for p in p1] == [p[0][0]["uri"] for p in p2]
 
 
 class TestFindExistingDriftIssue:
