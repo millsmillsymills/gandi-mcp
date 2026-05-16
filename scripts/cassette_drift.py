@@ -412,7 +412,8 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912 — single-pass
         else:
             sys.stderr.write(f"ERROR: drift detected but issue creation failed: {message}\n")
 
-    if parsed_total == 0 and parse_failures > 0:
+    if parse_failures > 0:
+        sys.stderr.write(f"ERROR: {parse_failures}/{parse_failures + parsed_total} cassettes failed to parse\n")
         return 1
     if drifted_cassettes:
         return 1

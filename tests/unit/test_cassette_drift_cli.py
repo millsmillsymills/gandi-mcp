@@ -126,6 +126,18 @@ class TestExitCodes:
         assert result.returncode == 0
         assert "no cassettes found" in result.stderr
 
+    def test_single_cassette_parse_failure_exits_1(self, cassette_dirs: tuple[Path, Path]) -> None:
+        old, new = cassette_dirs
+        # One good cassette, one malformed.
+        body = '{"a": 1}'
+        (old / "good.yaml").write_text(_cassette([_interaction("https://x", body)]))
+        (new / "good.yaml").write_text(_cassette([_interaction("https://x", body)]))
+        (old / "bad.yaml").write_text("not: : valid: yaml: :::")
+        (new / "bad.yaml").write_text(_cassette([_interaction("https://y", body)]))
+        result = _run_cli(["--cassette-dir-old", str(old), "--cassette-dir-new", str(new)])
+        assert result.returncode == 1, result.stderr
+        assert "cassettes failed to parse" in result.stderr
+
 
 class TestOpenIssueFlag:
     def test_open_issue_creates_when_no_existing(self, cassette_dirs: tuple[Path, Path], tmp_path: Path) -> None:
