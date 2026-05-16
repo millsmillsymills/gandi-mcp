@@ -64,6 +64,10 @@ class TestExtractShape:
         assert "42" not in flat
         assert "'a'" not in flat
 
+    def test_unknown_type_falls_back_to_type_name(self) -> None:
+        # Documented fallthrough for bytes / unknown types.
+        assert extract_shape(b"hi") == "bytes"
+
 
 class TestMergeListShape:
     def test_empty_input(self) -> None:
@@ -536,3 +540,12 @@ class TestFindExistingDriftIssue:
         monkeypatch.setattr("scripts.cassette_drift.subprocess.run", fake_run)
         with pytest.raises(IssueLookupError, match="gh subprocess failed"):
             find_existing_drift_issue("drift", "drift: ")
+
+
+class TestReportSummaryLine:
+    def test_report_summary_line_singular_for_one(self) -> None:
+        from scripts.cassette_drift import _report_summary_line
+
+        assert _report_summary_line(1) == "drift: 1 cassette drifted upstream"
+        assert _report_summary_line(2) == "drift: 2 cassettes drifted upstream"
+        assert _report_summary_line(0) == "drift: 0 cassettes drifted upstream"

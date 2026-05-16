@@ -194,6 +194,37 @@ class TestOpenIssueFlag:
         assert "+ added .b (int)" in result.stdout
         assert "issue creation failed" in result.stderr
 
+    def test_open_issue_comment_failure_still_reports_drift(
+        self, cassette_dirs: tuple[Path, Path], tmp_path: Path
+    ) -> None:
+        old, new = cassette_dirs
+        (old / "x.yaml").write_text(_cassette([_interaction("https://x", '{"a": "x"}')]))
+        (new / "x.yaml").write_text(_cassette([_interaction("https://x", '{"a": "x", "b": 1}')]))
+        recorder = tmp_path / "gh-argv.txt"
+        bindir = tmp_path / "bin"
+        existing = json.dumps([{"number": 42, "title": "drift: 1 cassette drifted upstream"}])
+        _write_gh_stub(bindir, on_list=existing, on_comment_rc=1, recorder=recorder)
+        result = _run_cli(
+            ["--cassette-dir-old", str(old), "--cassette-dir-new", str(new), "--open-issue"],
+            env_extra=_path_with_stub(bindir),
+        )
+        # With the I3 fix, gh failure under --open-issue is exit 3, not 1.
+        assert result.returncode == 3
+        assert "+ added .b (int)" in result.stdout
+        assert "issue creation failed" in result.stderr
+
+
+class TestSubdirectoryWalking:
+    def test_subdirectory_cassettes_are_walked(self, cassette_dirs: tuple[Path, Path]) -> None:
+        old, new = cassette_dirs
+        (old / "area1").mkdir()
+        (new / "area1").mkdir()
+        (old / "area1" / "c.yaml").write_text(_cassette([_interaction("https://x", '{"a": 1}')]))
+        (new / "area1" / "c.yaml").write_text(_cassette([_interaction("https://x", '{"a": 1, "b": "new"}')]))
+        result = _run_cli(["--cassette-dir-old", str(old), "--cassette-dir-new", str(new)])
+        assert result.returncode == 1
+        assert "area1/c.yaml" in result.stdout
+
 
 class TestWarnings:
     def test_non_json_body_emits_warning_not_drift(self, cassette_dirs: tuple[Path, Path]) -> None:
