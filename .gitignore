@@ -33,6 +33,7 @@ ENV/
 htmlcov/
 coverage.xml
 coverage.json
+tests/contract/cassettes.new/
 tests/integration/artifacts/
 .tox/
 .nox/

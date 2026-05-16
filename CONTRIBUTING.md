@@ -6,7 +6,7 @@ Thanks for contributing to gandi-mcp!
 
 The `main` branch requires:
 - Pull request before merge
-- Status checks: `static`, `test (3.11)`, `test (3.12)`, `test (3.13)`, `audit`
+- Status checks: `static`, `test (3.13)`, `audit`
 - Linear history (no merge commits)
 - No force-push
 
@@ -27,14 +27,52 @@ uv run pre-commit install
 | Live (read + safe writes) | `GANDI_MCP_LIVE_TESTS=1 GANDI_TOKEN=$PAT uv run pytest -m live` | Real Gandi | See `tests/live/README.md` (Phase 3) |
 | Smoke (release gate) | `GANDI_MCP_LIVE_TESTS=1 GANDI_TOKEN=$PAT uv run pytest -m smoke` | Real Gandi | See `RELEASE.md` (Phase 4) |
 
-### Re-recording contract cassettes (Phase 2)
+### Recording contract cassettes
 
-See `tests/contract/README.md` once Phase 2 lands.
+Tier-3 contract tests under `tests/contract/` replay YAML cassettes recorded
+against `api.gandi.net`. CI never hits the live API; replay-only.
+
+**To re-record after a Gandi API change:**
+
+1. Create a sandbox Personal Access Token at https://account.gandi.net/, scoped
+   **only** to the `teamrocket.network` test domain. Do not use a full-account
+   PAT — the cassettes will contain less-redacted data and a leak would be more
+   damaging.
+2. Store the PAT in your password manager (`pass insert gandi/pat-sandbox` or
+   equivalent). Never commit it.
+3. Run:
+   ```bash
+   GANDI_TOKEN=$(pass show gandi/pat-sandbox) make refresh-cassettes
+   ```
+   The target stages new cassettes under `tests/contract/cassettes.new/` and
+   only swaps them in on full success.
+4. Review the diff:
+   ```bash
+   git diff -- tests/contract/cassettes/
+   ```
+   Scan for any unredacted PII (real email addresses, IBANs, customer UUIDs
+   outside the redacted JSON paths). If you spot any, extend
+   `tests/contract/_redact.py`'s `PII_JSON_PATHS` rather than hand-editing the
+   cassette.
+5. Commit the cassette diff in its own commit so reviewers can focus on it.
+
+**Stale cassettes.** `make check-cassettes-fresh` fails if any cassette is
+older than 180 days. CI runs this as a non-blocking warning. Plan to refresh
+quarterly, or whenever a contract test fails on a field shape change.
+
+**What gets redacted.**
+`filter_headers` strips the `Authorization` bearer token and any cookies.
+`filter_query_parameters` strips the `sharing_id` URL parameter.
+The JSON-path response redactor (`tests/contract/_redact.py`) scrubs the
+following keys: `customer.id`, `owner.id`, `registrant.email`,
+`registrant.phone`, `registrant.streetaddr`, `billing.iban`. Other UUIDs
+(DNS record IDs, mailbox IDs, the resource's own `id`) survive — tests may
+assert against them.
 
 ### Code style
 
 - `ruff format` formats; `ruff check` lints
-- `mypy --strict` for type checking
+- `uv run ty check src/gandi_mcp/` for type checking
 - Run `uv run pre-commit run --all-files` before committing
 
 ### Commits

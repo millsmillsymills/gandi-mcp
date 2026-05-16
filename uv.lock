@@ -7,7 +7,10 @@ resolution-markers = [
 ]
 
 [manifest]
-constraints = [{ name = "python-multipart", specifier = ">=0.0.27" }]
+constraints = [
+    { name = "python-multipart", specifier = ">=0.0.27" },
+    { name = "vcrpy", specifier = ">=8.1,<9" },
+]
 
 [[package]]
 name = "aiofile"
