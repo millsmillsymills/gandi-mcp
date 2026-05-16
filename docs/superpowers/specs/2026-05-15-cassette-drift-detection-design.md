@@ -22,9 +22,9 @@ After the live-contract-tests spec lands (PRs #100–#104), `tests/contract/cass
 
 The existing freshness gate fails the build only when a cassette file's mtime is >180 days old. It cannot detect that:
 
-- Gandi added a new top-level field to `GET /v5/domain/domains/{fqdn}` last week. The committed cassette still parses, the test still passes, but downstream code that reads the new field via the dict-pass-through pattern would silently see `KeyError`.
-- A field that used to be a `string` is now an `object`. Replay still works; production fails.
-- A list endpoint's response cardinality shifted from "always 1+" to "sometimes empty". Replay-only tests don't see it.
+- Gandi renamed `nameservers` to `nameserver_list` in `GET /v5/domain/domains/{fqdn}`. The committed cassette still replays; the test still asserts `"nameservers" in result` and passes. Production hits the live API, sees only `nameserver_list`, and downstream code that does `result["nameservers"]` raises `KeyError`.
+- A field that used to be a `string` is now an `object`. Replay still passes; production code that does `result["customer"].lower()` raises `AttributeError`.
+- A list endpoint's response cardinality shifted from "always 1+" to "sometimes empty". Replay-only tests don't see it; production code that does `result[0]` raises `IndexError`.
 
 Drift detection bridges the gap: re-record cassettes on demand against live Gandi, structurally diff old vs. new, surface differences without overwriting.
 
@@ -83,7 +83,7 @@ Six pure functions plus a thin `main()`.
 
 | Function | Input → Output | Purpose |
 |---|---|---|
-| `load_cassette(path)` | YAML path → list of `(request, response_body_json_or_None)` | Parses VCR YAML. Returns `None` for the body when it is not valid JSON. Raises `CassetteParseError` only on malformed YAML or missing `interactions` list. |
+| `load_cassette(path)` | YAML path → list of `(request, response_body_json_or_None, occurrence_index)` | Parses VCR YAML. Returns `None` for the body when it is not valid JSON, when the body field is missing, or when the response status is non-2xx (error responses are not pinned by drift). `occurrence_index` is the 0-based position of this interaction within the cassette, used to disambiguate pairing for repeated identical requests. Raises `CassetteParseError` only on malformed YAML or a missing top-level `interactions` list. |
 | `extract_shape(body)` | parsed JSON → frozen shape | Recursive walk. `dict` → frozenset of `(key, child_shape)`. `list` → `("list", min_len, max_len, item_shape)`. Scalar → `"str"`/`"int"`/`"float"`/`"bool"`/`"null"`. Values discarded. |
 | `merge_list_shape(items)` | list of item shapes → unified shape | Folds heterogeneous list items into one shape with cardinality bounds. Mixed types collapse into `("union", frozenset_of_member_shapes)`. |
 | `diff_shapes(old, new, path)` | two shapes + jq-path → list of `DriftEntry` | Walks recursively, emitting `Added`/`Removed`/`TypeChanged`/`CardinalityChanged`/`UnionChanged`. |
@@ -94,11 +94,11 @@ Glue (`main()`):
 
 1. Walk `cassette-dir-old/**/*.yaml`. For each path, locate the sibling under `cassette-dir-new/` at the same relative path.
 2. Missing-on-new → warning, not drift (refresh was partial; that's a `refresh-cassettes` failure, not a drift signal).
-3. For each pair: `load_cassette(old)` + `load_cassette(new)`. Pair interactions by `(method, full_url_after_filtering, sha256(request_body_bytes))`. Unpaired interactions surface as orchestration-drift entries (separate channel from response-shape drift).
-4. For each paired response: `extract_shape(old)` + `extract_shape(new)` + `diff_shapes(...)`. Collect.
+3. For each pair: `load_cassette(old)` + `load_cassette(new)`. Pair interactions by `(method, full_url_after_filtering, sha256(request_body_bytes), occurrence_index)`. The `occurrence_index` disambiguates two identical requests within the same cassette (e.g. polling). Unpaired interactions surface as orchestration-drift entries (separate channel from response-shape drift).
+4. For each paired response: if either body is `None` (non-JSON, missing, or non-2xx), emit `WARN: <path> interaction <N>: body skipped (not a recordable JSON success)` and continue. Otherwise: `extract_shape(old)` + `extract_shape(new)` + `diff_shapes(...)`. Collect entries.
 5. `render_report(all_entries)` to stdout.
-6. If `--open-issue` AND total drift entries > 0: `find_existing_drift_issue("drift", "drift: ")`. Append a dated comment if found, else create with title `drift: N cassette(s) drifted upstream`, label `drift`, body containing the report.
-7. Exit 1 if drift, 0 otherwise.
+6. If `--open-issue` AND total shape-drift entries > 0: `find_existing_drift_issue("drift", "drift: ")`. Append a dated comment if found, else create with title `drift: <N> cassette(s) drifted upstream` (where N = count of distinct cassette files with at least one drift entry), label `drift`, body containing the full report piped via `gh issue create --body-file -`.
+7. Exit 1 if any shape-drift entries OR if every cassette failed to parse. Exit 0 otherwise (including the case where the only output was orchestration-drift warnings — those don't fail the gate; a missing or extra request is a test-suite change, not an upstream drift).
 
 The `gh` notifier shells out via `subprocess.run` — no new Python HTTP dep; `gh` is already required by `gh issue create` elsewhere in the project's workflows.
 
@@ -133,14 +133,15 @@ operator reads report on stdout, decides:
   - drift surprising → investigate before refreshing
 ```
 
-**Pairing detail.** Cassettes are list-of-interactions; the same endpoint can appear N times in one cassette with different request bodies. Pairing key = `(method, full_url_after_filtering, sha256(request_body_bytes))`. Unpaired-on-new = "request gone" entry; unpaired-on-old = "new request" entry (test added a new call). Both report as orchestration drift, distinct from response-shape drift.
+**Pairing detail.** Cassettes are list-of-interactions; the same endpoint can appear N times in one cassette with different request bodies (or even with identical request bodies — e.g. polling for a resource state to change). Pairing key = `(method, full_url_after_filtering, sha256(request_body_bytes), occurrence_index)`. The `occurrence_index` is the 0-based rank of this `(method, url, body_hash)` triple's appearance within the cassette: the first identical request gets 0, the second gets 1, etc. Without this disambiguator, two identical polls would collide on the pairing key and the diff would silently compare only the first pair. Unpaired-on-new = "request gone" entry; unpaired-on-old = "new request" entry (test added a new call). Both report as orchestration drift, distinct from response-shape drift.
 
 **Workflow path** (`.github/workflows/drift-check.yml`, dormant):
 
 - `on: workflow_dispatch` only. No `schedule:` line.
 - One job: checkout, `uv sync`, exports `GANDI_TOKEN` from `${{ secrets.GANDI_SANDBOX_PAT }}`, runs `make check-drift CASSETTE_DRIFT_OPEN_ISSUE=1`.
-- `permissions: { issues: write }` so the script can create or comment on the drift issue.
-- Workflow YAML lists `secrets.GANDI_SANDBOX_PAT` as a required secret in `inputs:` documentation for discoverability.
+- `permissions: { contents: read, issues: write }`. `contents: read` for checkout; `issues: write` so the script can create or comment on the drift issue.
+- A `concurrency:` block with `group: drift-check` and `cancel-in-progress: false` prevents two concurrent dispatches from each creating a duplicate drift issue (the second waits for the first to finish, then runs against the same head SHA, and either appends to the same issue or finds no new drift).
+- The workflow file opens with a comment block listing required repo secrets (`GANDI_SANDBOX_PAT`) and required repo labels (`drift`), since GitHub Actions has no machine-readable way to declare these as workflow-level prerequisites.
 
 The Makefile reads `$(CASSETTE_DRIFT_OPEN_ISSUE)` and conditionally adds `--open-issue`. Local default is no auto-issue.
 
@@ -149,10 +150,10 @@ The Makefile reads `$(CASSETTE_DRIFT_OPEN_ISSUE)` and conditionally adds `--open
 | Failure | Detection | Behavior |
 |---|---|---|
 | `GANDI_TOKEN` unset (manual run) | Makefile guard pre-record | Print `GANDI_TOKEN not set. Drift check requires the same sandbox PAT as refresh-cassettes.` Exit 2. No filesystem changes. (Mirrors `refresh-cassettes`.) |
-| `GANDI_TOKEN` unset (workflow_dispatch) | Same guard | Workflow step fails immediately with the same message. The workflow lists `secrets.GANDI_SANDBOX_PAT` in dispatch-inputs docs for discoverability. |
+| `GANDI_TOKEN` unset (workflow_dispatch) | Same guard | Workflow step fails immediately with the same message. The workflow's required-secrets comment block names `GANDI_SANDBOX_PAT` so an operator who dispatches against a fork without the secret set sees the prerequisite at the top of the file. |
 | Pytest record fails partway | Non-zero pytest exit | Makefile target propagates the exit code. `cassettes.new/` is left in place for inspection. `cassette_drift.py` does NOT run. Operator triages the contract-test failure first. |
 | Cassette parse error (malformed YAML or missing `interactions`) | `load_cassette` raises `CassetteParseError` | Print `WARN: skipping <path> (parse error: <msg>)`, continue with remaining pairs. Not counted as drift. Returns exit 1 only if every cassette failed to parse. |
-| Non-JSON response body | `load_cassette` returns body=None | Pair logged but excluded from shape diff. `WARN: <path> request <N>: body is not JSON, skipping shape diff`. |
+| Non-JSON response body, missing body, or non-2xx status | `load_cassette` returns body=None | Pair excluded from shape diff. `WARN: <path> interaction <N>: body skipped (not a recordable JSON success)`. Non-2xx is treated the same as non-JSON because error-response bodies are intentionally not pinned by the contract layer — `tools/*.py` error paths are covered by mocked tests (PR D), not by cassettes. |
 | `gh` not on PATH or non-zero on create/comment (only with `--open-issue`) | `subprocess.run` non-zero | Print `ERROR: drift detected but issue creation failed: <stderr>`. Still print the full drift report. Exit 1 (drift was real). CI surfaces both signals in one log. |
 
 **Two invariants that prevent silent failure:**
@@ -176,8 +177,8 @@ Pure functions exercised with synthetic inputs — no YAML files, no `gh`, no ne
 | `TestMergeListShape` | empty input; single-type list; mixed-scalar list → union; mixed-dict list → key-union with optional flags; cardinality bounds are (min, max) over input list |
 | `TestDiffShapes` | identical → empty diff; added field; removed field; type-changed field; cardinality bound widened; cardinality bound narrowed; nested-dict added; nested type change; union member added; union member removed; jq-path is correct for nested cases |
 | `TestRenderReport` | empty entries → empty string; one of each entry type → expected `+/-/~/!` line; markdown format has fenced block under a `## ` per-cassette heading; report is deterministic (sorted by jq-path) |
-| `TestLoadCassette` | well-formed YAML with JSON body → list of pairs; binary body → pair has body=None; missing `body.string` → pair has body=None; malformed YAML → raises `CassetteParseError`; multi-interaction cassette → all interactions returned |
-| `TestPairing` | identical request lists pair 1:1; same URL different body → distinct pairs; request gone in new → "orchestration: removed"; new request added → "orchestration: added" |
+| `TestLoadCassette` | well-formed YAML with JSON body → list of triples; binary body → triple has body=None; missing `body.string` → triple has body=None; non-2xx response → triple has body=None; malformed YAML → raises `CassetteParseError`; missing top-level `interactions` → raises `CassetteParseError`; multi-interaction cassette → all interactions returned in order with monotonically-increasing `occurrence_index` per identical request triple |
+| `TestPairing` | identical request lists pair 1:1; same URL different body → distinct pairs; two identical (method, url, body) requests in the same cassette → pair on `occurrence_index` (not collide on first match); request gone in new → "orchestration: removed"; new request added → "orchestration: added"; orchestration-drift only (no shape drift) → CLI exits 0 |
 
 **CLI (`tests/unit/test_cassette_drift_cli.py`):**
 
@@ -214,6 +215,8 @@ Driven via `subprocess.run` against `scripts/cassette_drift.py`. Uses two `tmp_p
 - **`gh` subprocess injection.** The drift report goes into `gh issue create --body-file -` via stdin, not as a shell argument. No string interpolation into the command line. The script never accepts user input — its only inputs are file paths and committed YAML.
 - **Sandbox PAT exposure via workflow_dispatch.** The workflow accepts no inputs, runs only on operator dispatch, and reads the PAT from `secrets.GANDI_SANDBOX_PAT`. Standard GitHub-managed secret hygiene applies. The PAT is sandbox-scoped to `teamrocket.network` per the live-contract-tests spec; blast radius on leak is bounded.
 - **Drift checker drift.** The diff logic itself can have bugs that hide drift. Mitigation: unit tests cover the four drift categories explicitly with both directions (added/removed, widened/narrowed, etc.). Mutation testing can be added in a follow-up if the script becomes complex enough.
+- **Pairing collision masking shape drift.** Two identical requests in one cassette with different responses (an idempotent-looking poll where the upstream state changed between calls) — without `occurrence_index`, only the first response would be compared and the second's drift would be invisible. Mitigation: pairing key includes `occurrence_index`; `TestPairing` covers the two-identical-requests case explicitly.
+- **Concurrent dispatches creating duplicate drift issues.** Two operators trigger the workflow simultaneously; `find_existing_drift_issue` runs in both before either creates an issue, both create. Mitigation: the workflow's `concurrency: { group: drift-check, cancel-in-progress: false }` serializes runs at the workflow level. Two `make check-drift` runs on different developer laptops with `--open-issue` (uncommon — local runs default to no auto-issue) can still race, but the impact is limited to one duplicate issue.
 
 ## Out of scope
 
@@ -221,7 +224,7 @@ Driven via `subprocess.run` against `scripts/cassette_drift.py`. Uses two `tmp_p
 - Value pinning. If a future test wants to assert that `response["status"] == "active"` rather than just `isinstance(response["status"], str)`, that's a test-side decision, not a drift-detector decision.
 - Drift detection for the 8 purchase endpoints. They have no committed cassettes (excluded by the live-contract-tests spec), so there is nothing to drift against.
 - Multi-PAT support (e.g. recording with one PAT, comparing against another's cassettes). Drift always uses the same sandbox PAT as refresh.
-- Webhook / Slack / email notifications. The `drift` GitHub issue is the canonical alert surface; GitHub's issue-subscription mechanism handles fan-out.
+- Webhook / Slack / email notifications. In CI mode, the `drift`-labeled GitHub issue is the alert surface, and GitHub's issue-subscription mechanism handles fan-out. In local mode (`make check-drift` without `CASSETTE_DRIFT_OPEN_ISSUE=1`), the report is stdout-only — operators reviewing drift locally don't need an issue.
 
 ## Migration
 
