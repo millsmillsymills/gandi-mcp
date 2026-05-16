@@ -96,13 +96,19 @@ def test_parse_json_returns_empty_dict_for_204(client: BaseGandiClient, body: by
 )
 def test_parse_json_raises_on_invalid_json(client: BaseGandiClient, status: int, body: str) -> None:
     """Invalid JSON in a non-204 body raises ``GandiError`` with the status surfaced."""
-    # Anything that successfully decodes as JSON is a different test path.
+    # The filter must mirror the parsing path ``_parse_json`` exercises:
+    # ``httpx.Response.json()`` calls ``json.loads`` on the response's *bytes*,
+    # and ``json.loads`` accepts inputs from bytes that it rejects from str
+    # (e.g. ``b"0\x00"`` returns ``0``; ``"0\x00"`` raises). Filtering on the
+    # str form would let inputs through that production actually parses
+    # successfully, falsifying the property.
+    payload = body.encode("utf-8")
     try:
-        json.loads(body)
+        json.loads(payload)
         valid_json = True
     except (ValueError, json.JSONDecodeError):
         valid_json = False
     assume(not valid_json)
-    response = httpx.Response(status, content=body.encode("utf-8"), headers={"content-type": "application/json"})
+    response = httpx.Response(status, content=payload, headers={"content-type": "application/json"})
     with pytest.raises(GandiError, match="Invalid JSON"):
         client._parse_json(response)
