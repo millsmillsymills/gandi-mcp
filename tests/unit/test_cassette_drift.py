@@ -142,13 +142,24 @@ class TestDiffShapes:
         old = ("union", frozenset({"str"}))
         new = ("union", frozenset({"str", "int"}))
         entries = diff_shapes(old, new)
-        assert entries == [DriftEntry(kind="union_changed", path="", old="{str}", new="{int, str}")]
+        assert entries == [DriftEntry(kind="union_changed", path="", old="union{str}", new="union{int, str}")]
 
     def test_union_member_removed(self) -> None:
         old = ("union", frozenset({"str", "int"}))
         new = ("union", frozenset({"str"}))
         entries = diff_shapes(old, new)
-        assert entries == [DriftEntry(kind="union_changed", path="", old="{int, str}", new="{str}")]
+        assert entries == [DriftEntry(kind="union_changed", path="", old="union{int, str}", new="union{str}")]
+
+    def test_dict_vs_union_renders_distinctly_in_type_changed(self) -> None:
+        # When old is a dict-keyset and new is a union (or vice versa),
+        # the rendered diff must show "dict{...}" vs "union{...}" so the
+        # operator can tell which side is which.
+        old = frozenset({("a", "str"), ("b", "int")})
+        new = ("union", frozenset({"str", "int"}))
+        entries = diff_shapes(old, new)
+        assert len(entries) == 1
+        assert "dict{" in entries[0].old
+        assert "union{" in entries[0].new
 
     def test_jq_path_deeply_nested(self) -> None:
         old = frozenset({("a", frozenset({("b", frozenset({("c", "str")}))}))})
@@ -190,9 +201,9 @@ class TestRenderReport:
         assert "! list .items: 0..3 → 0..50" in report
 
     def test_union_changed_entry_text_format(self) -> None:
-        entries = [DriftEntry("union_changed", ".x", "{str}", "{int, str}")]
+        entries = [DriftEntry("union_changed", ".x", "union{str}", "union{int, str}")]
         report = render_report("cassette.yaml", entries, fmt="text")
-        assert "~ union .x: {str} → {int, str}" in report
+        assert "~ union .x: union{str} → union{int, str}" in report
 
     def test_markdown_format_has_fenced_block_and_heading(self) -> None:
         entries = [DriftEntry("added", ".foo", None, "str")]

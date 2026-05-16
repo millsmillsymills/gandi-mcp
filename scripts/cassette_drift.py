@@ -90,7 +90,7 @@ def _render_shape(shape: Shape) -> str:
     if isinstance(shape, frozenset):
         # dict shape — render keyset for brevity
         keys = sorted(k for k, _ in shape)
-        return "{" + ", ".join(keys) + "}"
+        return "dict{" + ", ".join(keys) + "}"
     if isinstance(shape, tuple):
         tag = shape[0]
         if tag == "list" and len(shape) == 4:
@@ -98,7 +98,7 @@ def _render_shape(shape: Shape) -> str:
             return f"list[{_render_shape(item) if item is not None else 'empty'}]({lo}..{hi})"
         if tag == "union" and len(shape) == 2:
             members = sorted(_render_shape(m) for m in shape[1])
-            return "{" + ", ".join(members) + "}"
+            return "union{" + ", ".join(members) + "}"
     return repr(shape)
 
 
