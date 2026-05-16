@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -264,3 +265,21 @@ class TestWarnings:
         result = _run_cli(["--cassette-dir-old", str(old), "--cassette-dir-new", str(new)])
         assert result.returncode == 0  # orchestration drift only — no shape drift
         assert "orchestration: added" in result.stderr
+
+
+class TestMakefileGuards:
+    def test_check_drift_guards_missing_token(self) -> None:
+        make = shutil.which("make")
+        if make is None:
+            pytest.skip("make not on PATH")
+        env = {k: v for k, v in os.environ.items() if k != "GANDI_TOKEN"}
+        result = subprocess.run(
+            [make, "check-drift"],
+            capture_output=True,
+            text=True,
+            cwd=str(REPO_ROOT),
+            env=env,
+            check=False,
+        )
+        assert result.returncode == 2
+        assert "GANDI_TOKEN not set" in (result.stdout + result.stderr)
