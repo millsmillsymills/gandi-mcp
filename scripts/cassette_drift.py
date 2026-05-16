@@ -128,3 +128,23 @@ def diff_shapes(old: Shape, new: Shape, path: str = "") -> list[DriftEntry]:
     if old != new:
         entries.append(DriftEntry("type_changed", path, _render_shape(old), _render_shape(new)))
     return entries
+
+
+_RENDERERS = {
+    "added": lambda e: f"+ added {e.path} ({e.new})",
+    "removed": lambda e: f"- removed {e.path} ({e.old})",
+    "type_changed": lambda e: f"~ {e.path}: {e.old} → {e.new}",
+    "cardinality_changed": lambda e: f"! list {e.path}: {e.old} → {e.new}",
+    "union_changed": lambda e: f"~ union {e.path}: {e.old} → {e.new}",
+}
+
+
+def render_report(cassette_path: str, entries: list[DriftEntry], fmt: str = "text") -> str:
+    """Render a per-cassette drift report. Empty entries → empty string."""
+    if not entries:
+        return ""
+    sorted_entries = sorted(entries, key=lambda e: (e.path, e.kind))
+    lines = [_RENDERERS[e.kind](e) for e in sorted_entries]
+    if fmt == "md":
+        return f"## {cassette_path}\n\n```\n" + "\n".join(lines) + "\n```\n"
+    return f"{cassette_path}:\n" + "\n".join(f"  {line}" for line in lines) + "\n"

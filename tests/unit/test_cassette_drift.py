@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from scripts.cassette_drift import DriftEntry, diff_shapes, extract_shape, merge_list_shape
+from scripts.cassette_drift import DriftEntry, diff_shapes, extract_shape, merge_list_shape, render_report
 
 
 class TestExtractShape:
@@ -143,3 +143,54 @@ class TestDiffShapes:
         entries = diff_shapes(old, new)
         # Determinism: paths must come out in sorted order regardless of frozenset iteration.
         assert [e.path for e in entries] == [".a", ".z"]
+
+
+class TestRenderReport:
+    def test_empty_entries_returns_empty_string(self) -> None:
+        assert render_report("cassette.yaml", [], fmt="text") == ""
+
+    def test_added_entry_text_format(self) -> None:
+        entries = [DriftEntry("added", ".foo.bar", None, "str")]
+        report = render_report("cassette.yaml", entries, fmt="text")
+        assert "cassette.yaml" in report
+        assert "+ added .foo.bar (str)" in report
+
+    def test_removed_entry_text_format(self) -> None:
+        entries = [DriftEntry("removed", ".foo.bar", "str", None)]
+        report = render_report("cassette.yaml", entries, fmt="text")
+        assert "- removed .foo.bar (str)" in report
+
+    def test_type_changed_entry_text_format(self) -> None:
+        entries = [DriftEntry("type_changed", ".foo", "int", "str")]
+        report = render_report("cassette.yaml", entries, fmt="text")
+        assert "~ .foo: int → str" in report
+
+    def test_cardinality_changed_entry_text_format(self) -> None:
+        entries = [DriftEntry("cardinality_changed", ".items", "0..3", "0..50")]
+        report = render_report("cassette.yaml", entries, fmt="text")
+        assert "! list .items: 0..3 → 0..50" in report
+
+    def test_union_changed_entry_text_format(self) -> None:
+        entries = [DriftEntry("union_changed", ".x", "{str}", "{int, str}")]
+        report = render_report("cassette.yaml", entries, fmt="text")
+        assert "~ union .x: {str} → {int, str}" in report
+
+    def test_markdown_format_has_fenced_block_and_heading(self) -> None:
+        entries = [DriftEntry("added", ".foo", None, "str")]
+        report = render_report("cassette.yaml", entries, fmt="md")
+        assert "## cassette.yaml" in report
+        assert "```" in report
+        assert "+ added .foo (str)" in report
+
+    def test_report_is_deterministic_sorted_by_path(self) -> None:
+        # Pre-shuffled input — render must sort by path so output is reproducible.
+        entries = [
+            DriftEntry("added", ".z", None, "str"),
+            DriftEntry("added", ".a", None, "str"),
+            DriftEntry("added", ".m", None, "str"),
+        ]
+        report = render_report("cassette.yaml", entries, fmt="text")
+        idx_a = report.index(".a")
+        idx_m = report.index(".m")
+        idx_z = report.index(".z")
+        assert idx_a < idx_m < idx_z
