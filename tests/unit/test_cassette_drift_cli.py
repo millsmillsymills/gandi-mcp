@@ -197,8 +197,20 @@ class TestWarnings:
         (new / "x.yaml").write_text(_cassette([_interaction("https://x", "<html>not json</html>")]))
         result = _run_cli(["--cassette-dir-old", str(old), "--cassette-dir-new", str(new)])
         assert result.returncode == 0
-        assert "body skipped" in result.stderr
+        # 2xx + non-JSON body is the high-signal regression case.
+        assert "invalid JSON body" in result.stderr
         assert "+ added" not in result.stdout
+
+    def test_non_2xx_body_emits_no_warning(self, cassette_dirs: tuple[Path, Path]) -> None:
+        old, new = cassette_dirs
+        # 404 on both sides — intentional skip, no warning needed.
+        (old / "x.yaml").write_text(_cassette([_interaction("https://x", '{"e": 1}', status=404)]))
+        (new / "x.yaml").write_text(_cassette([_interaction("https://x", '{"e": 1}', status=404)]))
+        result = _run_cli(["--cassette-dir-old", str(old), "--cassette-dir-new", str(new)])
+        assert result.returncode == 0
+        # non_2xx and empty are intentional contracts — they must not pollute stderr.
+        assert "invalid JSON body" not in result.stderr
+        assert "schema regression" not in result.stderr
 
     def test_missing_on_new_emits_warning_not_drift(self, cassette_dirs: tuple[Path, Path]) -> None:
         old, _new = cassette_dirs

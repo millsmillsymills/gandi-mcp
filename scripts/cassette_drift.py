@@ -184,8 +184,18 @@ def _request_key(req: dict) -> tuple[str, str, str]:
     return (method, uri, body_hash)
 
 
-def load_cassette(path: str) -> list[tuple[dict, Any, int]]:
-    """Parse a VCR cassette into ``(request, body_or_None, occurrence_index)`` triples."""
+def load_cassette(path: str) -> list[tuple[dict, Any, int, str | None]]:
+    """Parse a VCR cassette into ``(request, body_or_None, occurrence_index, body_skip_reason)`` tuples.
+
+    ``body_skip_reason`` is ``None`` when the body parsed successfully. Otherwise it
+    classifies why ``body`` is ``None`` so callers can render specific warnings:
+
+    - ``"non_2xx"``: response status was outside 2xx (intentional skip).
+    - ``"empty"``: 2xx with empty body (intentional skip — typical for 204).
+    - ``"missing"``: response.body.string field missing (cassette schema regression).
+    - ``"malformed_json"``: 2xx with body that failed JSON parse (Gandi regression worth flagging).
+    - ``"schema_error"``: response.status.code field has wrong type.
+    """
     try:
         with Path(path).open(encoding="utf-8") as f:
             data = yaml.safe_load(f)
@@ -197,41 +207,53 @@ def load_cassette(path: str) -> list[tuple[dict, Any, int]]:
     if not isinstance(interactions, list):
         raise CassetteParseError(f"'interactions' in {path} is not a list")
 
-    triples: list[tuple[dict, Any, int]] = []
+    tuples: list[tuple[dict, Any, int, str | None]] = []
     counts: dict[tuple[str, str, str], int] = {}
     for interaction in interactions:
         if not isinstance(interaction, dict):
             continue
         request = interaction.get("request") or {}
         response = interaction.get("response") or {}
-        status = (response.get("status") or {}).get("code", 0)
+        status_code = (response.get("status") or {}).get("code", 0)
         body_field = response.get("body") or {}
+        has_string_field = isinstance(body_field, dict) and "string" in body_field
         raw = body_field.get("string") if isinstance(body_field, dict) else None
-        body: Any
-        if not raw or not isinstance(status, int) or not (200 <= status < 300):
-            body = None
+        body: Any = None
+        reason: str | None = None
+        if not isinstance(status_code, int):
+            reason = "schema_error"
+        elif not (200 <= status_code < 300):
+            reason = "non_2xx"
+        elif not has_string_field:
+            reason = "missing"
+        elif not raw:
+            reason = "empty"
         else:
             try:
                 body = json.loads(raw)
             except (ValueError, TypeError):
-                body = None
+                reason = "malformed_json"
         key = _request_key(request)
         occ = counts.get(key, 0)
         counts[key] = occ + 1
-        triples.append((request, body, occ))
-    return triples
+        tuples.append((request, body, occ, reason))
+    return tuples
 
 
 def pair_interactions(
-    old: list[tuple[dict, Any, int]],
-    new: list[tuple[dict, Any, int]],
-) -> tuple[list[tuple[tuple[dict, Any, int], tuple[dict, Any, int]]], list, list]:
+    old: list[tuple[dict, Any, int, str | None]],
+    new: list[tuple[dict, Any, int, str | None]],
+) -> tuple[
+    list[tuple[tuple[dict, Any, int, str | None], tuple[dict, Any, int, str | None]]],
+    list[tuple[dict, Any, int, str | None]],
+    list[tuple[dict, Any, int, str | None]],
+]:
     """Pair old and new interactions by (method, uri, body-hash, occurrence_index).
 
     Returns ``(pairs, only_in_old, only_in_new)``.
     """
-    old_by_key = {(*_request_key(r), occ): (r, b, occ) for (r, b, occ) in old}
-    new_by_key = {(*_request_key(r), occ): (r, b, occ) for (r, b, occ) in new}
+    old_by_key = {(*_request_key(r), occ): (r, b, occ, reason) for (r, b, occ, reason) in old}
+    new_by_key = {(*_request_key(r), occ): (r, b, occ, reason) for (r, b, occ, reason) in new}
     keys_old = set(old_by_key)
     keys_new = set(new_by_key)
     common = keys_old & keys_new
@@ -374,24 +396,31 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912 — single-pass
             warnings.append(f"WARN: missing-on-new: {rel}")
             continue
         try:
-            old_triples = load_cassette(str(old_path))
-            new_triples = load_cassette(str(new_path))
+            old_tuples = load_cassette(str(old_path))
+            new_tuples = load_cassette(str(new_path))
         except CassetteParseError as e:
             warnings.append(f"WARN: skipping {rel} (parse error: {e})")
             parse_failures += 1
             continue
         parsed_total += 1
 
-        pairs, only_old, only_new = pair_interactions(old_triples, new_triples)
+        pairs, only_old, only_new = pair_interactions(old_tuples, new_tuples)
         warnings.extend(f"WARN: orchestration: removed {rel} {o[0].get('method')} {o[0].get('uri')}" for o in only_old)
         warnings.extend(f"WARN: orchestration: added {rel} {n[0].get('method')} {n[0].get('uri')}" for n in only_new)
 
         cassette_entries: list[DriftEntry] = []
-        for i, (old_triple, new_triple) in enumerate(pairs):
-            old_body = old_triple[1]
-            new_body = new_triple[1]
+        for i, (old_tuple, new_tuple) in enumerate(pairs):
+            old_body, old_reason = old_tuple[1], old_tuple[3]
+            new_body, new_reason = new_tuple[1], new_tuple[3]
             if old_body is None or new_body is None:
-                warnings.append(f"WARN: {rel} interaction {i}: body skipped (not a recordable JSON success)")
+                for side, reason in (("old", old_reason), ("new", new_reason)):
+                    if reason in {"missing", "schema_error"}:
+                        warnings.append(f"WARN: {rel} interaction {i} ({side}): cassette schema regression ({reason})")
+                    elif reason == "malformed_json":
+                        warnings.append(
+                            f"WARN: {rel} interaction {i} ({side}): "
+                            "2xx response with invalid JSON body (Gandi regression?)"
+                        )
                 continue
             cassette_entries.extend(diff_shapes(extract_shape(old_body), extract_shape(new_body)))
         if cassette_entries:

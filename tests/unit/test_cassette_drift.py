@@ -230,15 +230,16 @@ class TestLoadCassette:
                 },
             ],
         )
-        triples = load_cassette(p)
-        assert len(triples) == 1
-        req, body, occ = triples[0]
+        rows = load_cassette(p)
+        assert len(rows) == 1
+        req, body, occ, reason = rows[0]
         assert req["method"] == "GET"
         assert body == {"a": 1}
         assert occ == 0
+        assert reason is None
 
-    def test_binary_body_returns_none(self, tmp_path) -> None:
-        # Body that doesn't parse as JSON (e.g. HTML or binary).
+    def test_binary_body_returns_none_with_malformed_json_reason(self, tmp_path) -> None:
+        # 2xx response with non-JSON body is a regression signal worth flagging.
         p = _write_cassette(
             tmp_path,
             "html.yaml",
@@ -249,22 +250,43 @@ class TestLoadCassette:
                 },
             ],
         )
-        assert load_cassette(p)[0][1] is None
+        row = load_cassette(p)[0]
+        assert row[1] is None
+        assert row[3] == "malformed_json"
 
-    def test_missing_body_string_returns_none(self, tmp_path) -> None:
+    def test_missing_body_string_returns_missing_reason(self, tmp_path) -> None:
+        # body field present but no `string` key — cassette schema regression.
         p = _write_cassette(
             tmp_path,
             "nobody.yaml",
             [
                 {
                     "request": {"method": "GET", "uri": "https://x", "body": None},
-                    "response": {"status": {"code": 204}, "body": {}},
+                    "response": {"status": {"code": 200}, "body": {}},
                 },
             ],
         )
-        assert load_cassette(p)[0][1] is None
+        row = load_cassette(p)[0]
+        assert row[1] is None
+        assert row[3] == "missing"
 
-    def test_non_2xx_response_returns_none(self, tmp_path) -> None:
+    def test_empty_body_string_returns_empty_reason(self, tmp_path) -> None:
+        # 2xx with an empty body string is intentional (e.g. 204 No Content recorded as 2xx).
+        p = _write_cassette(
+            tmp_path,
+            "empty.yaml",
+            [
+                {
+                    "request": {"method": "GET", "uri": "https://x", "body": None},
+                    "response": {"status": {"code": 204}, "body": {"string": ""}},
+                },
+            ],
+        )
+        row = load_cassette(p)[0]
+        assert row[1] is None
+        assert row[3] == "empty"
+
+    def test_non_2xx_response_returns_non_2xx_reason(self, tmp_path) -> None:
         # Even if the body is valid JSON, a non-2xx response is excluded from drift.
         p = _write_cassette(
             tmp_path,
@@ -276,7 +298,25 @@ class TestLoadCassette:
                 },
             ],
         )
-        assert load_cassette(p)[0][1] is None
+        row = load_cassette(p)[0]
+        assert row[1] is None
+        assert row[3] == "non_2xx"
+
+    def test_status_code_wrong_type_returns_schema_error_reason(self, tmp_path) -> None:
+        # status.code is a string instead of int — cassette schema regression.
+        p = _write_cassette(
+            tmp_path,
+            "schema.yaml",
+            [
+                {
+                    "request": {"method": "GET", "uri": "https://x", "body": None},
+                    "response": {"status": {"code": "200"}, "body": {"string": '{"a": 1}'}},
+                },
+            ],
+        )
+        row = load_cassette(p)[0]
+        assert row[1] is None
+        assert row[3] == "schema_error"
 
     def test_malformed_yaml_raises(self, tmp_path) -> None:
         path = tmp_path / "bad.yaml"
@@ -302,8 +342,8 @@ class TestLoadCassette:
                 {"request": same_req, "response": {"status": {"code": 200}, "body": {"string": body}}},
             ],
         )
-        triples = load_cassette(p)
-        assert [t[2] for t in triples] == [0, 1, 2]
+        rows = load_cassette(p)
+        assert [t[2] for t in rows] == [0, 1, 2]
 
     def test_occurrence_index_resets_per_distinct_request(self, tmp_path) -> None:
         a = {"method": "GET", "uri": "https://x/a", "body": None}
@@ -318,9 +358,9 @@ class TestLoadCassette:
                 {"request": a, "response": {"status": {"code": 200}, "body": {"string": body}}},
             ],
         )
-        triples = load_cassette(p)
+        rows = load_cassette(p)
         # Order preserved; occurrence_index is 0,0,1 (a's second appearance is index 1; b's first is 0).
-        assert [(t[0]["uri"], t[2]) for t in triples] == [
+        assert [(t[0]["uri"], t[2]) for t in rows] == [
             ("https://x/a", 0),
             ("https://x/b", 0),
             ("https://x/a", 1),
@@ -336,19 +376,19 @@ class TestPairInteractions:
 
     def test_identical_request_lists_pair_one_to_one(self) -> None:
         req = {"method": "GET", "uri": "https://x", "body": None}
-        old = [(req, {"a": 1}, 0)]
-        new = [(req, {"a": 1}, 0)]
+        old = [(req, {"a": 1}, 0, None)]
+        new = [(req, {"a": 1}, 0, None)]
         pairs, only_old, only_new = pair_interactions(old, new)
         assert len(pairs) == 1
-        assert pairs[0] == ((req, {"a": 1}, 0), (req, {"a": 1}, 0))
+        assert pairs[0] == ((req, {"a": 1}, 0, None), (req, {"a": 1}, 0, None))
         assert only_old == []
         assert only_new == []
 
     def test_same_url_different_body_yields_distinct_pairs(self) -> None:
         req_a = {"method": "POST", "uri": "https://x", "body": "ping"}
         req_b = {"method": "POST", "uri": "https://x", "body": "pong"}
-        old = [(req_a, {"a": 1}, 0), (req_b, {"b": 1}, 0)]
-        new = [(req_a, {"a": 1}, 0), (req_b, {"b": 1}, 0)]
+        old = [(req_a, {"a": 1}, 0, None), (req_b, {"b": 1}, 0, None)]
+        new = [(req_a, {"a": 1}, 0, None), (req_b, {"b": 1}, 0, None)]
         pairs, only_old, only_new = pair_interactions(old, new)
         assert len(pairs) == 2
         assert only_old == []
@@ -358,13 +398,13 @@ class TestPairInteractions:
         # Critical: two identical polls in the same cassette must NOT collide on the
         # first match. occurrence_index disambiguates them.
         req = {"method": "GET", "uri": "https://x/poll", "body": None}
-        old = [(req, {"state": "pending"}, 0), (req, {"state": "done"}, 1)]
-        new = [(req, {"state": "pending"}, 0), (req, {"state": "done"}, 1)]
+        old = [(req, {"state": "pending"}, 0, None), (req, {"state": "done"}, 1, None)]
+        new = [(req, {"state": "pending"}, 0, None), (req, {"state": "done"}, 1, None)]
         pairs, only_old, only_new = pair_interactions(old, new)
         assert len(pairs) == 2
         # First poll pairs with first poll (occ=0); second with second (occ=1).
         # Body distinguishability is what we're guarding here — without the occ-key,
-        # both new triples would pair against the FIRST old triple, masking drift.
+        # both new tuples would pair against the FIRST old tuple, masking drift.
         assert pairs[0][0][1] == {"state": "pending"}
         assert pairs[0][1][1] == {"state": "pending"}
         assert pairs[1][0][1] == {"state": "done"}
@@ -375,8 +415,8 @@ class TestPairInteractions:
     def test_request_gone_in_new_lands_in_only_in_old(self) -> None:
         req_a = {"method": "GET", "uri": "https://x/a", "body": None}
         req_b = {"method": "GET", "uri": "https://x/b", "body": None}
-        old = [(req_a, {"a": 1}, 0), (req_b, {"b": 1}, 0)]
-        new = [(req_a, {"a": 1}, 0)]
+        old = [(req_a, {"a": 1}, 0, None), (req_b, {"b": 1}, 0, None)]
+        new = [(req_a, {"a": 1}, 0, None)]
         pairs, only_old, only_new = pair_interactions(old, new)
         assert len(pairs) == 1
         assert len(only_old) == 1
@@ -386,21 +426,30 @@ class TestPairInteractions:
     def test_new_request_added_lands_in_only_in_new(self) -> None:
         req_a = {"method": "GET", "uri": "https://x/a", "body": None}
         req_b = {"method": "GET", "uri": "https://x/b", "body": None}
-        old = [(req_a, {"a": 1}, 0)]
-        new = [(req_a, {"a": 1}, 0), (req_b, {"b": 1}, 0)]
+        old = [(req_a, {"a": 1}, 0, None)]
+        new = [(req_a, {"a": 1}, 0, None), (req_b, {"b": 1}, 0, None)]
         pairs, only_old, only_new = pair_interactions(old, new)
         assert len(pairs) == 1
         assert only_old == []
         assert len(only_new) == 1
         assert only_new[0][0]["uri"] == "https://x/b"
 
+    def test_skip_reason_propagates_through_pair(self) -> None:
+        req = {"method": "GET", "uri": "https://x", "body": None}
+        old = [(req, None, 0, "malformed_json")]
+        new = [(req, None, 0, "non_2xx")]
+        pairs, _only_old, _only_new = pair_interactions(old, new)
+        assert len(pairs) == 1
+        assert pairs[0][0][3] == "malformed_json"
+        assert pairs[0][1][3] == "non_2xx"
+
     def test_result_is_deterministic_across_input_order(self) -> None:
         # pair_interactions must sort its key-sets for reproducible output.
         req_a = {"method": "GET", "uri": "https://x/a", "body": None}
         req_b = {"method": "GET", "uri": "https://x/b", "body": None}
         # Same content, two different orderings.
-        ordering_1 = [(req_a, {"a": 1}, 0), (req_b, {"b": 1}, 0)]
-        ordering_2 = [(req_b, {"b": 1}, 0), (req_a, {"a": 1}, 0)]
+        ordering_1 = [(req_a, {"a": 1}, 0, None), (req_b, {"b": 1}, 0, None)]
+        ordering_2 = [(req_b, {"b": 1}, 0, None), (req_a, {"a": 1}, 0, None)]
         p1, _, _ = pair_interactions(ordering_1, ordering_1)
         p2, _, _ = pair_interactions(ordering_2, ordering_2)
         # Sorted pairing → identical output regardless of input ordering.
