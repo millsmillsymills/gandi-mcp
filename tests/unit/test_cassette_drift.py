@@ -9,6 +9,7 @@ import pytest
 from scripts.cassette_drift import (
     CassetteParseError,
     DriftEntry,
+    IssueLookupError,
     diff_shapes,
     extract_shape,
     find_existing_drift_issue,
@@ -482,20 +483,38 @@ class TestFindExistingDriftIssue:
         monkeypatch.setattr("scripts.cassette_drift.subprocess.run", fake_run)
         assert find_existing_drift_issue("drift", "drift: ") is None
 
-    def test_gh_failure_returns_none_and_does_not_raise(self, monkeypatch) -> None:
-        # If gh fails (auth issue, network, etc.), we surface no existing issue so
-        # main() falls through to issue creation; the creation attempt will then
-        # produce its own error path.
+    def test_gh_returncode_failure_raises(self, monkeypatch) -> None:
+        # gh exits non-zero (auth issue, network, etc.). The lookup didn't succeed —
+        # collapsing this to "no match" would cause _post_or_append_issue to create
+        # a duplicate issue on every transient outage.
         def fake_run(*args, **kwargs):
             return _subprocess.CompletedProcess(args=args[0], returncode=1, stdout="", stderr="gh: not authenticated")
 
         monkeypatch.setattr("scripts.cassette_drift.subprocess.run", fake_run)
-        assert find_existing_drift_issue("drift", "drift: ") is None
+        with pytest.raises(IssueLookupError, match="gh issue list failed"):
+            find_existing_drift_issue("drift", "drift: ")
 
-    def test_gh_not_installed_returns_none(self, monkeypatch) -> None:
-        # FileNotFoundError when gh isn't on PATH — docstring promises "None on any gh failure".
+    def test_malformed_json_raises(self, monkeypatch) -> None:
+        def fake_run(*args, **kwargs):
+            return _subprocess.CompletedProcess(args=args[0], returncode=0, stdout="not json", stderr="")
+
+        monkeypatch.setattr("scripts.cassette_drift.subprocess.run", fake_run)
+        with pytest.raises(IssueLookupError, match="malformed JSON"):
+            find_existing_drift_issue("drift", "drift: ")
+
+    def test_filenotfound_raises(self, monkeypatch) -> None:
         def fake_run(*args, **kwargs):
             raise FileNotFoundError("gh")
 
         monkeypatch.setattr("scripts.cassette_drift.subprocess.run", fake_run)
-        assert find_existing_drift_issue("drift", "drift: ") is None
+        with pytest.raises(IssueLookupError, match="gh not installed"):
+            find_existing_drift_issue("drift", "drift: ")
+
+    def test_permission_error_raises_with_distinct_message(self, monkeypatch) -> None:
+        # PermissionError must NOT be misreported as "gh not installed".
+        def fake_run(*args, **kwargs):
+            raise PermissionError("access denied")
+
+        monkeypatch.setattr("scripts.cassette_drift.subprocess.run", fake_run)
+        with pytest.raises(IssueLookupError, match="gh subprocess failed"):
+            find_existing_drift_issue("drift", "drift: ")

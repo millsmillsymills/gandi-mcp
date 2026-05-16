@@ -174,7 +174,12 @@ class TestOpenIssueFlag:
         assert "issue comment 42" in argv_log
         assert "issue create" not in argv_log
 
-    def test_open_issue_failure_still_reports_drift(self, cassette_dirs: tuple[Path, Path], tmp_path: Path) -> None:
+    def test_open_issue_failure_returns_distinct_exit_code(
+        self, cassette_dirs: tuple[Path, Path], tmp_path: Path
+    ) -> None:
+        # When --open-issue is set and gh fails to create the issue, exit code is 3
+        # (not 1) so CI dashboards can distinguish "drift posted to tracker" from
+        # "drift detected but lost to a gh outage".
         old, new = cassette_dirs
         (old / "x.yaml").write_text(_cassette([_interaction("https://x", '{"a": "x"}')]))
         (new / "x.yaml").write_text(_cassette([_interaction("https://x", '{"a": "x", "b": 1}')]))
@@ -185,7 +190,7 @@ class TestOpenIssueFlag:
             ["--cassette-dir-old", str(old), "--cassette-dir-new", str(new), "--open-issue"],
             env_extra=_path_with_stub(bindir),
         )
-        assert result.returncode == 1
+        assert result.returncode == 3, result.stderr
         assert "+ added .b (int)" in result.stdout
         assert "issue creation failed" in result.stderr
 

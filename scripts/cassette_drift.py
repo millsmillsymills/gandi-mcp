@@ -263,37 +263,42 @@ def pair_interactions(
     return pairs, only_in_old, only_in_new
 
 
+class IssueLookupError(Exception):
+    """Raised when the gh lookup itself failed (vs. lookup-succeeded-and-no-match).
+
+    Distinguishing these is what prevents duplicate-issue spam: if the lookup itself
+    fails, we must refuse to create a new issue (we don't know whether one exists).
+    """
+
+
 def find_existing_drift_issue(label: str, title_prefix: str) -> int | None:
     """Look up an open issue with the given label whose title starts with ``title_prefix``.
 
-    Returns the issue number, or ``None`` on no match or on any ``gh`` failure
-    (failure falls through to issue creation in main()).
+    Returns the issue number on match, or ``None`` when the lookup succeeded with no
+    matching issue. Raises :class:`IssueLookupError` when the lookup itself failed —
+    callers must treat that as "unknown" and refuse to create a new issue, or they
+    will spam duplicates on every transient gh outage.
     """
-    try:
-        result = subprocess.run(
-            [  # noqa: S607 — relying on PATH lookup for `gh` is intentional
-                "gh",
-                "issue",
-                "list",
-                "--label",
-                label,
-                "--state",
-                "open",
-                "--json",
-                "number,title",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except (FileNotFoundError, OSError):
-        return None
+    result = _run_gh(
+        [
+            "gh",
+            "issue",
+            "list",
+            "--label",
+            label,
+            "--state",
+            "open",
+            "--json",
+            "number,title",
+        ],
+        stdin="",
+    )
     if result.returncode != 0:
-        return None
+        raise IssueLookupError(f"gh issue list failed (rc={result.returncode}): {result.stderr.strip()}")
     try:
         issues = json.loads(result.stdout)
-    except (ValueError, TypeError):
-        return None
+    except (ValueError, TypeError) as e:
+        raise IssueLookupError(f"gh issue list returned malformed JSON: {e}") from e
     for issue in issues:
         title = issue.get("title", "")
         if isinstance(title, str) and title.startswith(title_prefix):
@@ -312,39 +317,60 @@ def _report_summary_line(n_cassettes: int) -> str:
     return f"drift: {n_cassettes} cassette{suffix} drifted upstream"
 
 
-def _post_or_append_issue(label: str, title: str, body: str) -> tuple[bool, str]:
+def _run_gh(argv: list[str], stdin: str) -> subprocess.CompletedProcess[str]:
+    """Run ``gh`` with stdin captured.
+
+    Raises :class:`IssueLookupError` on OS-level failure (``FileNotFoundError`` for
+    "gh not installed" is distinguished from other ``OSError`` subclasses like
+    ``PermissionError``).
+    """
+    try:
+        return subprocess.run(
+            argv,
+            input=stdin,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError as e:
+        raise IssueLookupError("gh not installed") from e
+    except OSError as e:
+        raise IssueLookupError(f"gh subprocess failed: {e}") from e
+
+
+def _post_or_append_issue(label: str, title: str, body: str) -> tuple[bool, str]:  # noqa: PLR0911 — three failure modes per path (append vs create) inherently produce 7 returns
     """Create a new drift issue with the given title, or append a dated comment to an existing one.
 
     Returns ``(success, message)``. ``success=False`` indicates ``gh`` failed.
+
+    If the lookup itself failed, we refuse to create a new issue — creating one
+    blind would spam duplicates on every transient gh outage.
     """
-    existing = find_existing_drift_issue(label, "drift: ")
+    try:
+        existing = find_existing_drift_issue(label, "drift: ")
+    except IssueLookupError as e:
+        return False, f"issue lookup failed: {e}, refusing to create duplicate"
     timestamp = _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     if existing is not None:
         commented_body = f"### Drift recurred at {timestamp}\n\n{body}"
         try:
-            result = subprocess.run(
-                ["gh", "issue", "comment", str(existing), "--body-file", "-"],  # noqa: S607 — PATH lookup for `gh` is intentional
-                input=commented_body,
-                capture_output=True,
-                text=True,
-                check=False,
+            result = _run_gh(
+                ["gh", "issue", "comment", str(existing), "--body-file", "-"],
+                commented_body,
             )
-        except (FileNotFoundError, OSError):
-            return False, "gh not installed"
+        except IssueLookupError as e:
+            return False, str(e)
         if result.returncode != 0:
             return False, f"append to issue #{existing} failed: {result.stderr.strip()}"
         return True, f"appended comment to issue #{existing}"
 
     try:
-        result = subprocess.run(
-            ["gh", "issue", "create", "--label", label, "--title", title, "--body-file", "-"],  # noqa: S607 — PATH lookup for `gh` is intentional
-            input=body,
-            capture_output=True,
-            text=True,
-            check=False,
+        result = _run_gh(
+            ["gh", "issue", "create", "--label", label, "--title", title, "--body-file", "-"],
+            body,
         )
-    except (FileNotFoundError, OSError):
-        return False, "gh not installed"
+    except IssueLookupError as e:
+        return False, str(e)
     if result.returncode != 0:
         return False, f"create issue failed: {result.stderr.strip()}"
     return True, f"created issue: {result.stdout.strip()}"
@@ -433,19 +459,23 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912 — single-pass
     for w in warnings:
         sys.stderr.write(w + "\n")
 
+    issue_failed = False
     if args.open_issue and drifted_cassettes:
         title = _report_summary_line(len(drifted_cassettes))
         success, message = _post_or_append_issue("drift", title, full_report)
         if success:
             sys.stderr.write(message + "\n")
         else:
+            issue_failed = True
             sys.stderr.write(f"ERROR: drift detected but issue creation failed: {message}\n")
 
     if parse_failures > 0:
         sys.stderr.write(f"ERROR: {parse_failures}/{parse_failures + parsed_total} cassettes failed to parse\n")
         return 1
     if drifted_cassettes:
-        return 1
+        # Exit 3 distinguishes "drift detected but not posted to issue tracker" from
+        # the normal "drift detected" case so CI dashboards can alert on the former.
+        return 3 if issue_failed else 1
     return 0
 
 
