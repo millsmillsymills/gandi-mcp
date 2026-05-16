@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from scripts.cassette_drift import extract_shape, merge_list_shape
+from scripts.cassette_drift import DriftEntry, diff_shapes, extract_shape, merge_list_shape
 
 
 class TestExtractShape:
@@ -74,3 +74,72 @@ class TestMergeListShape:
         # diff-side merging — for now both equal len(items).
         result = merge_list_shape(["str"] * 5)
         assert result == ("list", 5, 5, "str")
+
+
+class TestDiffShapes:
+    def test_identical_shapes_no_drift(self) -> None:
+        a = frozenset({("foo", "str")})
+        assert diff_shapes(a, a) == []
+
+    def test_added_key(self) -> None:
+        old = frozenset({("foo", "str")})
+        new = frozenset({("foo", "str"), ("bar", "int")})
+        entries = diff_shapes(old, new)
+        assert entries == [DriftEntry(kind="added", path=".bar", old=None, new="int")]
+
+    def test_removed_key(self) -> None:
+        old = frozenset({("foo", "str"), ("bar", "int")})
+        new = frozenset({("foo", "str")})
+        entries = diff_shapes(old, new)
+        assert entries == [DriftEntry(kind="removed", path=".bar", old="int", new=None)]
+
+    def test_type_changed_scalar(self) -> None:
+        old = frozenset({("foo", "int")})
+        new = frozenset({("foo", "str")})
+        entries = diff_shapes(old, new)
+        assert entries == [DriftEntry(kind="type_changed", path=".foo", old="int", new="str")]
+
+    def test_cardinality_widened(self) -> None:
+        old = ("list", 3, 3, "str")
+        new = ("list", 0, 50, "str")
+        entries = diff_shapes(old, new)
+        assert entries == [
+            DriftEntry(kind="cardinality_changed", path="", old="3..3", new="0..50"),
+        ]
+
+    def test_nested_dict_added(self) -> None:
+        old = frozenset({("outer", frozenset({("a", "str")}))})
+        new = frozenset({("outer", frozenset({("a", "str"), ("b", "int")}))})
+        entries = diff_shapes(old, new)
+        assert entries == [DriftEntry(kind="added", path=".outer.b", old=None, new="int")]
+
+    def test_list_item_type_change(self) -> None:
+        old = ("list", 2, 2, "str")
+        new = ("list", 2, 2, "int")
+        entries = diff_shapes(old, new)
+        assert entries == [DriftEntry(kind="type_changed", path="[]", old="str", new="int")]
+
+    def test_union_member_added(self) -> None:
+        old = ("union", frozenset({"str"}))
+        new = ("union", frozenset({"str", "int"}))
+        entries = diff_shapes(old, new)
+        assert entries == [DriftEntry(kind="union_changed", path="", old="{str}", new="{int, str}")]
+
+    def test_union_member_removed(self) -> None:
+        old = ("union", frozenset({"str", "int"}))
+        new = ("union", frozenset({"str"}))
+        entries = diff_shapes(old, new)
+        assert entries == [DriftEntry(kind="union_changed", path="", old="{int, str}", new="{str}")]
+
+    def test_jq_path_deeply_nested(self) -> None:
+        old = frozenset({("a", frozenset({("b", frozenset({("c", "str")}))}))})
+        new = frozenset({("a", frozenset({("b", frozenset({("c", "int")}))}))})
+        entries = diff_shapes(old, new)
+        assert entries == [DriftEntry(kind="type_changed", path=".a.b.c", old="str", new="int")]
+
+    def test_entries_sorted_by_path_for_determinism(self) -> None:
+        old = frozenset({("a", "str"), ("z", "str")})
+        new = frozenset({("a", "int"), ("z", "int")})
+        entries = diff_shapes(old, new)
+        # Determinism: paths must come out in sorted order regardless of frozenset iteration.
+        assert [e.path for e in entries] == [".a", ".z"]

@@ -11,6 +11,7 @@ Run via ``make check-drift`` after PR #100 lands. See
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 # A "shape" is one of:
@@ -55,3 +56,75 @@ def merge_list_shape(items: list[Shape]) -> Shape:
     if len(distinct) == 1:
         return ("list", n, n, next(iter(distinct)))
     return ("list", n, n, ("union", distinct))
+
+
+@dataclass(frozen=True)
+class DriftEntry:
+    kind: str
+    path: str
+    old: str | None
+    new: str | None
+
+
+def _render_shape(shape: Shape) -> str:
+    """Compact human-readable rendering for diff messages."""
+    if isinstance(shape, str):
+        return shape
+    if isinstance(shape, frozenset):
+        # dict shape — render keyset for brevity
+        keys = sorted(k for k, _ in shape)
+        return "{" + ", ".join(keys) + "}"
+    if isinstance(shape, tuple):
+        tag = shape[0]
+        if tag == "list":
+            _, lo, hi, item = shape
+            return f"list[{_render_shape(item) if item is not None else 'empty'}]({lo}..{hi})"
+        if tag == "union":
+            members = sorted(_render_shape(m) for m in shape[1])
+            return "{" + ", ".join(members) + "}"
+    return repr(shape)
+
+
+def diff_shapes(old: Shape, new: Shape, path: str = "") -> list[DriftEntry]:
+    """Walk two shapes and return drift entries sorted by jq-path for determinism."""
+    entries: list[DriftEntry] = []
+
+    if isinstance(old, frozenset) and isinstance(new, frozenset):
+        old_keys = dict(old)
+        new_keys = dict(new)
+        for k in sorted(set(old_keys) | set(new_keys)):
+            child_path = f"{path}.{k}"
+            if k not in old_keys:
+                entries.append(DriftEntry("added", child_path, None, _render_shape(new_keys[k])))
+            elif k not in new_keys:
+                entries.append(DriftEntry("removed", child_path, _render_shape(old_keys[k]), None))
+            else:
+                entries.extend(diff_shapes(old_keys[k], new_keys[k], child_path))
+        return entries
+
+    if isinstance(old, tuple) and isinstance(new, tuple) and old[0] == new[0] == "list":
+        _, o_lo, o_hi, o_item = old
+        _, n_lo, n_hi, n_item = new
+        if (o_lo, o_hi) != (n_lo, n_hi):
+            entries.append(DriftEntry("cardinality_changed", path, f"{o_lo}..{o_hi}", f"{n_lo}..{n_hi}"))
+        if o_item is not None and n_item is not None:
+            entries.extend(diff_shapes(o_item, n_item, f"{path}[]"))
+        elif o_item != n_item:
+            entries.append(
+                DriftEntry(
+                    "type_changed",
+                    f"{path}[]",
+                    _render_shape(o_item) if o_item is not None else "empty",
+                    _render_shape(n_item) if n_item is not None else "empty",
+                )
+            )
+        return entries
+
+    if isinstance(old, tuple) and isinstance(new, tuple) and old[0] == new[0] == "union":
+        if old[1] != new[1]:
+            entries.append(DriftEntry("union_changed", path, _render_shape(old), _render_shape(new)))
+        return entries
+
+    if old != new:
+        entries.append(DriftEntry("type_changed", path, _render_shape(old), _render_shape(new)))
+    return entries
