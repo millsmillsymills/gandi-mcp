@@ -1,8 +1,10 @@
-"""Enforce per-file and per-directory coverage thresholds from coverage.json.
+"""Enforce per-file coverage thresholds from coverage.json.
 
 `coverage.py` only enforces a global `--cov-fail-under`. This script reads the
-JSON report produced by `pytest --cov-report=json` and fails on per-file gaps.
-Run in CI after `pytest --cov`; non-zero exit blocks the merge.
+JSON report produced by `pytest --cov-report=json` and fails any file whose
+coverage drops below FILE_THRESHOLD. Run in CI after `pytest --cov`; non-zero
+exit blocks the merge. The set of files is whatever `--cov` produced — new files
+under `src/gandi_mcp/` are auto-included.
 """
 
 from __future__ import annotations
@@ -11,27 +13,10 @@ import json
 import sys
 from pathlib import Path
 
-TOTAL_THRESHOLD = 85.0
-
-PER_FILE_THRESHOLDS: dict[str, float] = {
-    "src/gandi_mcp/clients/base.py": 90.0,
-    "src/gandi_mcp/errors.py": 90.0,
-    "src/gandi_mcp/server.py": 90.0,
-    "src/gandi_mcp/config.py": 90.0,
-}
-
-PER_DIR_THRESHOLDS: dict[str, float] = {
-    "src/gandi_mcp/tools/": 70.0,
-}
+TOTAL_THRESHOLD = 90.0
+FILE_THRESHOLD = 90.0
 
 COVERAGE_JSON = Path("coverage.json")
-
-
-def _coverage(files: dict[str, dict[str, dict[str, float]]], path: str) -> float | None:
-    entry = files.get(path)
-    if entry is None:
-        return None
-    return entry["summary"]["percent_covered"]
 
 
 def main() -> int:
@@ -48,22 +33,10 @@ def main() -> int:
     if total < TOTAL_THRESHOLD:
         failures.append(f"TOTAL: {total:.2f}% < {TOTAL_THRESHOLD:.1f}%")
 
-    for path, threshold in PER_FILE_THRESHOLDS.items():
-        pct = _coverage(files, path)
-        if pct is None:
-            failures.append(f"{path}: missing from coverage report")
-            continue
-        if pct < threshold:
-            failures.append(f"{path}: {pct:.2f}% < {threshold:.1f}%")
-
-    for dir_prefix, threshold in PER_DIR_THRESHOLDS.items():
-        matched = [(p, files[p]["summary"]["percent_covered"]) for p in files if p.startswith(dir_prefix)]
-        if not matched:
-            failures.append(f"{dir_prefix}: no files matched (check prefix)")
-            continue
-        for path, pct in matched:
-            if pct < threshold:
-                failures.append(f"{path}: {pct:.2f}% < {threshold:.1f}% (dir gate)")
+    for path, entry in sorted(files.items()):
+        pct = entry["summary"]["percent_covered"]
+        if pct < FILE_THRESHOLD:
+            failures.append(f"{path}: {pct:.2f}% < {FILE_THRESHOLD:.1f}%")
 
     if failures:
         sys.stderr.write("Coverage thresholds violated:\n")
