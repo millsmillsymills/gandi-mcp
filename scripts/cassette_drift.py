@@ -11,9 +11,12 @@ Run via ``make check-drift`` after PR #100 lands. See
 
 from __future__ import annotations
 
+import argparse
+import datetime as _dt
 import hashlib
 import json
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -264,3 +267,148 @@ def find_existing_drift_issue(label: str, title_prefix: str) -> int | None:
             if isinstance(number, int):
                 return number
     return None
+
+
+def _walk_cassettes(root: Path) -> list[Path]:
+    return sorted(root.glob("**/*.yaml"))
+
+
+def _report_summary_line(n_cassettes: int) -> str:
+    suffix = "s" if n_cassettes != 1 else ""
+    return f"drift: {n_cassettes} cassette{suffix} drifted upstream"
+
+
+def _post_or_append_issue(label: str, title_prefix: str, body: str) -> tuple[bool, str]:
+    """Create a new drift issue or append a dated comment to an existing one.
+
+    Returns ``(success, message)``. ``success=False`` indicates ``gh`` failed.
+    """
+    existing = find_existing_drift_issue(label, title_prefix)
+    timestamp = _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    if existing is not None:
+        commented_body = f"### Drift recurred at {timestamp}\n\n{body}"
+        try:
+            result = subprocess.run(
+                ["gh", "issue", "comment", str(existing), "--body-file", "-"],  # noqa: S607 — PATH lookup for `gh` is intentional
+                input=commented_body,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except (FileNotFoundError, OSError):
+            return False, "gh not installed"
+        if result.returncode != 0:
+            return False, f"append to issue #{existing} failed: {result.stderr.strip()}"
+        return True, f"appended comment to issue #{existing}"
+
+    n_cassettes = body.count("\n##") + (1 if body.startswith("##") else 0)
+    if n_cassettes == 0:
+        n_cassettes = 1  # text format — at least one cassette must have produced the body
+    title = _report_summary_line(n_cassettes)
+    try:
+        result = subprocess.run(
+            ["gh", "issue", "create", "--label", label, "--title", title, "--body-file", "-"],  # noqa: S607 — PATH lookup for `gh` is intentional
+            input=body,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (FileNotFoundError, OSError):
+        return False, "gh not installed"
+    if result.returncode != 0:
+        return False, f"create issue failed: {result.stderr.strip()}"
+    return True, f"created issue: {result.stdout.strip()}"
+
+
+def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912 — single-pass walk over cassettes, splitting would obscure flow
+    parser = argparse.ArgumentParser(description="Detect structural drift between VCR cassette directories.")
+    parser.add_argument(
+        "--cassette-dir-old",
+        default="tests/contract/cassettes",
+        help="Directory of committed cassettes (default: %(default)s).",
+    )
+    parser.add_argument(
+        "--cassette-dir-new",
+        default="tests/contract/cassettes.new",
+        help="Directory of freshly-recorded cassettes (default: %(default)s).",
+    )
+    parser.add_argument("--report-format", choices=("text", "md"), default="text")
+    parser.add_argument(
+        "--open-issue",
+        action="store_true",
+        help="On drift, create or append to a 'drift'-labeled GitHub issue via gh.",
+    )
+    args = parser.parse_args(argv)
+
+    old_root = Path(args.cassette_dir_old)
+    new_root = Path(args.cassette_dir_new)
+    if not old_root.is_dir():
+        sys.stderr.write(f"ERROR: --cassette-dir-old not found: {old_root}\n")
+        return 2
+    if not new_root.is_dir():
+        sys.stderr.write(f"ERROR: --cassette-dir-new not found: {new_root}\n")
+        return 2
+
+    old_cassettes = _walk_cassettes(old_root)
+    if not old_cassettes:
+        sys.stderr.write(f"WARN: no cassettes found under {old_root}\n")
+        return 0
+
+    parsed_total = 0
+    parse_failures = 0
+    drifted_cassettes: list[tuple[str, list[DriftEntry]]] = []
+    warnings: list[str] = []
+
+    for old_path in old_cassettes:
+        rel = old_path.relative_to(old_root)
+        new_path = new_root / rel
+        if not new_path.is_file():
+            warnings.append(f"WARN: missing-on-new: {rel}")
+            continue
+        try:
+            old_triples = load_cassette(str(old_path))
+            new_triples = load_cassette(str(new_path))
+        except CassetteParseError as e:
+            warnings.append(f"WARN: skipping {rel} (parse error: {e})")
+            parse_failures += 1
+            continue
+        parsed_total += 1
+
+        pairs, only_old, only_new = pair_interactions(old_triples, new_triples)
+        warnings.extend(f"WARN: orchestration: removed {rel} {o[0].get('method')} {o[0].get('uri')}" for o in only_old)
+        warnings.extend(f"WARN: orchestration: added {rel} {n[0].get('method')} {n[0].get('uri')}" for n in only_new)
+
+        cassette_entries: list[DriftEntry] = []
+        for i, (old_triple, new_triple) in enumerate(pairs):
+            old_body = old_triple[1]
+            new_body = new_triple[1]
+            if old_body is None or new_body is None:
+                warnings.append(f"WARN: {rel} interaction {i}: body skipped (not a recordable JSON success)")
+                continue
+            cassette_entries.extend(diff_shapes(extract_shape(old_body), extract_shape(new_body)))
+        if cassette_entries:
+            drifted_cassettes.append((str(rel), cassette_entries))
+
+    report_parts = [render_report(name, entries, fmt=args.report_format) for name, entries in drifted_cassettes]
+    full_report = "".join(p for p in report_parts if p)
+    if full_report:
+        sys.stdout.write(full_report)
+    for w in warnings:
+        sys.stderr.write(w + "\n")
+
+    if args.open_issue and drifted_cassettes:
+        success, message = _post_or_append_issue("drift", "drift: ", full_report)
+        if success:
+            sys.stderr.write(message + "\n")
+        else:
+            sys.stderr.write(f"ERROR: drift detected but issue creation failed: {message}\n")
+
+    if parsed_total == 0 and parse_failures > 0:
+        return 1
+    if drifted_cassettes:
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
