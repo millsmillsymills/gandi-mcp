@@ -179,9 +179,9 @@ Pure functions exercised with synthetic inputs — no YAML files, no `gh`, no ne
 | `TestLoadCassette` | well-formed YAML with JSON body → list of pairs; binary body → pair has body=None; missing `body.string` → pair has body=None; malformed YAML → raises `CassetteParseError`; multi-interaction cassette → all interactions returned |
 | `TestPairing` | identical request lists pair 1:1; same URL different body → distinct pairs; request gone in new → "orchestration: removed"; new request added → "orchestration: added" |
 
-**Integration (`tests/unit/test_cassette_drift_cli.py`):**
+**CLI (`tests/unit/test_cassette_drift_cli.py`):**
 
-Driven via `subprocess.run` against `scripts/cassette_drift.py`. Uses two `tmp_path` cassette dirs.
+Driven via `subprocess.run` against `scripts/cassette_drift.py`. Uses two `tmp_path` cassette dirs. Lives under `tests/unit/` because it is offline-pure — no network, no real `gh` call, no live cassettes.
 
 | Test | Setup | Assertion |
 |---|---|---|
@@ -199,7 +199,7 @@ Driven via `subprocess.run` against `scripts/cassette_drift.py`. Uses two `tmp_p
 - Real `gh issue create` calls (stubbed via PATH shadowing — safer than hitting a live test repo).
 - Network behavior — drift logic is offline-pure given two cassette dirs.
 
-**Coverage projection.** `scripts/cassette_drift.py` lands at ~100% line coverage (~80 LoC, pure logic). Lifts total project coverage ~0.5pp once PR A's contract infrastructure is in place. No coverage-gate change. If this PR ships before PR E's unified 90% floor, it raises the existing per-file map to include `scripts/cassette_drift.py` at 90%.
+**Coverage scope.** `scripts/` is not under `[tool.coverage.run] source = ["gandi_mcp"]`, so the drift script does not contribute to project coverage and the coverage gate does not apply to it. Its correctness is enforced exclusively by the unit + CLI tests above. If a future change adds `scripts/` to the coverage source, the script should hold ~100% line coverage given its size (~80 LoC of pure logic).
 
 ## Dependencies
 
